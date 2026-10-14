@@ -107,8 +107,16 @@ services:
     image: dbs-identifier-camera:latest
     restart: unless-stopped
     env_file: .env
-    devices:
-      - ${CAMERA_DEVICE:-/dev/video0}:/dev/video0
+    environment:
+      CAMERA_DEVICE_IN_CONTAINER: ${CAMERA_DEVICE:-/dev/video0}
+    # Conexión en caliente: en vez de `devices:` (exige que la webcam exista al
+    # crear el contenedor y no ve una reconexión), se monta /dev del host y se
+    # permiten todos los dispositivos V4L2 (major 81). Si la webcam se
+    # desconecta, el servicio reintenta cada 3 s y se recupera solo.
+    volumes:
+      - /dev:/dev
+    device_cgroup_rules:
+      - "c 81:* rmw"
     group_add:
       - video
     expose:

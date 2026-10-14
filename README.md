@@ -81,6 +81,7 @@ Para saltarse el hook puntualmente: `SKIP_DEPLOY_HOOK=1 git pull`. Para forzar u
 
 ### Cámara
 
+- Se puede desconectar y reconectar la webcam en caliente: el servicio reintenta cada 3 s. Mientras no hay cámara, los escaneos fallan con "La cámara no está disponible".
 - Captura en 1920x1080 MJPEG (`CAMERA_*` en `.env`); la Trust QHD no ofrece 1280x720. 2K satura la CPU de la Pi 3.
 - El servicio solo decodifica frames mientras alguien los pide (preview abierto o escaneo); en reposo apenas consume CPU.
 - Enfoque y exposición fijos con `CAMERA_CONTROLS`, que se aplican al arrancar:
