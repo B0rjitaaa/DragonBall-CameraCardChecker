@@ -11,7 +11,7 @@ from vision.preprocess import decode_image, encode_jpeg
 
 from . import camera
 from .models import Scan
-from .services import run_identification, serialize_candidates
+from .services import run_identification, serialize_candidates, warm_up
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +52,16 @@ def identify_card(scan_id: int):
     scan.finished_at = timezone.now()
     scan.save()
     return scan.status
+
+
+@shared_task(ignore_result=True)
+def keep_warm():
+    """Mantiene en RAM el pipeline de identificación y la cámara (ver warm_up)."""
+    warm_up(log=False)
+    try:
+        camera.get_preview(timeout=3)
+    except camera.CameraUnavailable:
+        pass  # sin cámara (desarrollo): solo se mantiene caliente el worker
 
 
 @shared_task

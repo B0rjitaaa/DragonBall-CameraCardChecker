@@ -126,11 +126,25 @@ CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_ACKS_LATE = True
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_RESULT_EXPIRES = 3600
+# Cada cuántos segundos se "toca" el pipeline para que no acabe en swap (0 = nunca).
+KEEP_WARM_SECONDS = int(env("KEEP_WARM_SECONDS", "60"))
 CELERY_BEAT_SCHEDULE = {
     "sync-bandai-catalog": {
         "task": "cards.tasks.sync_bandai_catalog",
         "schedule": crontab(hour=int(env("BANDAI_SYNC_HOUR", "4")), minute=0),
     },
+    **(
+        {
+            "keep-worker-warm": {
+                "task": "scans.tasks.keep_warm",
+                "schedule": KEEP_WARM_SECONDS,
+                # Si el worker está ocupado, no acumular ejecuciones atrasadas.
+                "options": {"expires": KEEP_WARM_SECONDS * 0.8},
+            }
+        }
+        if KEEP_WARM_SECONDS > 0
+        else {}
+    ),
     "cleanup-old-scans": {
         "task": "scans.tasks.cleanup_old_scans",
         "schedule": crontab(hour=5, minute=0, day_of_week="mon"),

@@ -51,17 +51,22 @@ def run_identification(img) -> MatchResult:
     )
 
 
-def warm_up():
-    """Identificación de prueba (forzando ORB) al arrancar el worker.
+def warm_up(log: bool = True):
+    """Identificación de prueba (forzando ORB).
 
-    En la Raspberry Pi la primera identificación tardaba ~8 s más que las
-    siguientes: OpenCV carga desde la SD el código de ORB/BFMatcher la primera
-    vez que se usa. Así lo paga el arranque y no el primer escaneo.
+    Al arrancar el worker: en la Raspberry Pi la primera identificación tardaba
+    ~8 s más que las siguientes, porque OpenCV carga desde la SD el código de
+    ORB/BFMatcher la primera vez que se usa.
+
+    Periódicamente (tarea keep_warm): con la RAM justa, Linux manda al swap lo
+    que lleva un rato sin usarse y el primer escaneo tras unos minutos parado
+    tardaba 3-6 s en recuperarlo.
     """
     started = time.monotonic()
     noise = np.random.default_rng(0).integers(0, 256, (720, 1280, 3), dtype=np.uint8)
     identify(noise, get_index(), _load_orb, hash_threshold=-1, orb_candidates=2)
-    logger.info("Worker precalentado en %.1f s", time.monotonic() - started)
+    if log:
+        logger.info("Worker precalentado en %.1f s", time.monotonic() - started)
 
 
 def learn_from_scan(scan, card) -> CardFingerprint:

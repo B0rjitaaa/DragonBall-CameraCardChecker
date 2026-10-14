@@ -203,3 +203,17 @@ class FacetsTests(TestCase):
             Card.objects.create(bandai_id=i + 1, card_number=f"BT1-{i:03d}", name="X", color=color)
         facets = APIClient().get("/api/cards/facets/").data
         self.assertEqual(facets["color"], ["Blue", "Red"])
+
+
+class KeepWarmTests(TestCase):
+    @override_settings(CAMERA_URL="")
+    def test_keep_warm_runs_without_camera(self):
+        from scans.tasks import keep_warm
+
+        keep_warm()  # no debe fallar aunque no haya cámara ni catálogo
+
+    def test_keep_warm_is_scheduled(self):
+        from django.conf import settings
+
+        entry = settings.CELERY_BEAT_SCHEDULE["keep-worker-warm"]
+        self.assertEqual(entry["task"], "scans.tasks.keep_warm")
