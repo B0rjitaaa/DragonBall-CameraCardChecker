@@ -1,0 +1,115 @@
+# DBS Card Identifier
+#
+# Desarrollo (Mac/PC, sin webcam):   docker compose up -d --build
+# Raspberry Pi (con webcam USB):     docker compose --profile camera up -d --build
+#
+# Todas las imágenes base son multi-arquitectura (amd64 / arm64), así que el
+# mismo fichero sirve en el portátil y en la Pi (Raspberry Pi OS 64-bit).
+
+x-backend-common: &backend-common
+  build: ./backend
+  image: dbs-identifier-backend:latest
+  env_file: .env
+  restart: unless-stopped
+  volumes:
+    - media:/app/media
+    # Catálogo JSON y caché de imágenes oficiales (data/card_images).
+    - ./data:/app/data
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    # Ajustes conservadores para 1 GB de RAM (Pi 3 B+).
+    command: >
+      postgres
+      -c shared_buffers=64MB
+      -c work_mem=4MB
+      -c maintenance_work_mem=32MB
+      -c max_connections=30
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --maxmemory 64mb --maxmemory-policy allkeys-lru --save ""
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    <<: *backend-common
+    environment:
+      RUN_MIGRATIONS: "1"
+    command: >
+      gunicorn config.wsgi:application
+      --bind 0.0.0.0:8000
+      --workers ${GUNICORN_WORKERS:-1}
+      --timeout 60
+      --access-logfile -
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/')"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  # Pool "solo" + beat embebido: un único proceso Python con OpenCV en lugar
+  # de tres (worker, hijo del pool y beat), clave con 1 GB de RAM.
+  worker:
+    <<: *backend-common
+    command: >
+      celery -A config worker
+      --loglevel=info
+      --pool=solo
+      --beat --schedule /tmp/celerybeat-schedule
+
+  frontend:
+    build: ./frontend
+    image: dbs-identifier-frontend:latest
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    volumes:
+      - media:/srv/media:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  # Servicio dueño de la webcam: solo un proceso puede abrir /dev/video0, así
+  # que backend (preview) y worker (captura) le piden frames por HTTP.
+  camera:
+    profiles: ["camera"]
+    build: ./camera
+    image: dbs-identifier-camera:latest
+    restart: unless-stopped
+    env_file: .env
+    devices:
+      - ${CAMERA_DEVICE:-/dev/video0}:/dev/video0
+    group_add:
+      - video
+    expose:
+      - "8080"
+
+volumes:
+  pgdata:
+  media:

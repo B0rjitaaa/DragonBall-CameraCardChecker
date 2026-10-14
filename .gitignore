@@ -1,0 +1,10 @@
+.env
+__pycache__/
+*.pyc
+backend/media/
+backend/staticfiles/
+data/card_images/
+node_modules/
+frontend/dist/
+.DS_Store
+*.sqlite3
