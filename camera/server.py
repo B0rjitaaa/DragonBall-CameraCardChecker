@@ -69,13 +69,16 @@ class Camera:
 
     def run(self):
         while True:
-            cap = self._open()
-            if not cap.isOpened():
+            # Sin webcam conectada no existe el dispositivo: se espera sin
+            # llamar a OpenCV (que escribe un aviso propio en cada intento).
+            cap = self._open() if os.path.exists(DEVICE) else None
+            if cap is None or not cap.isOpened():
                 if self.opened or not self._open_failed_logged:
                     log.warning("No se pudo abrir %s (¿webcam desconectada?); reintentando cada 3 s", DEVICE)
                     self._open_failed_logged = True
                 self.opened = False
-                cap.release()
+                if cap is not None:
+                    cap.release()
                 time.sleep(3)
                 continue
             self._open_failed_logged = False
