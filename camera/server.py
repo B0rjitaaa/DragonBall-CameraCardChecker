@@ -56,6 +56,7 @@ class Camera:
         self._last_request = 0.0
         self._preview = (0.0, None)  # (frame_at, jpeg) cacheado
         self.opened = False
+        self._open_failed_logged = False
 
     def _open(self) -> cv2.VideoCapture:
         cap = cv2.VideoCapture(DEVICE, cv2.CAP_V4L2)
@@ -70,9 +71,14 @@ class Camera:
         while True:
             cap = self._open()
             if not cap.isOpened():
-                log.warning("No se pudo abrir %s; reintento en 3 s", DEVICE)
+                if self.opened or not self._open_failed_logged:
+                    log.warning("No se pudo abrir %s (¿webcam desconectada?); reintentando cada 3 s", DEVICE)
+                    self._open_failed_logged = True
+                self.opened = False
+                cap.release()
                 time.sleep(3)
                 continue
+            self._open_failed_logged = False
             apply_controls()
             self.opened = True
             log.info(
@@ -96,15 +102,22 @@ class Camera:
                     self._cond.notify_all()
             log.warning("Lectura fallida; reabriendo cámara")
             self.opened = False
+            with self._cond:
+                self._frame, self._frame_at = None, 0.0
             cap.release()
             time.sleep(1)
 
     def frame(self, max_age: float):
-        """Frame decodificado con antigüedad <= max_age (espera si hace falta)."""
+        """Frame decodificado con antigüedad <= max_age (espera si hace falta).
+
+        Devuelve (None, 0) si no llega uno reciente: nunca un frame antiguo, que
+        haría identificar lo que había delante de la cámara hace minutos.
+        """
         self._last_request = time.monotonic()
         with self._cond:
             fresh = lambda: self._frame is not None and time.monotonic() - self._frame_at <= max_age  # noqa: E731
-            self._cond.wait_for(fresh, timeout=WAIT_TIMEOUT)
+            if not self._cond.wait_for(fresh, timeout=WAIT_TIMEOUT):
+                return None, 0.0
             return self._frame, self._frame_at
 
     def full_jpeg(self) -> bytes | None:
@@ -149,7 +162,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _send_jpeg(self, data: bytes | None):
         if data is None:
-            self._send(503, b'{"detail": "sin frames de la camara"}', "application/json")
+            self._send(503, b'{"detail": "sin frames recientes de la camara"}', "application/json")
         else:
             self._send(200, data, "image/jpeg")
 

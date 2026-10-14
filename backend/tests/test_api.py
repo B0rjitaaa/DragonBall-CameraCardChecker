@@ -158,8 +158,20 @@ class ScanApiTests(TestCase):
         self.assertIn("CAMERA_URL", scan.error)
 
     @override_settings(CAMERA_URL="http://camera:8080")
+    def test_camera_scan_fails_when_camera_has_no_frames(self):
+        with mock.patch("scans.camera.requests.get") as get:
+            get.return_value.status_code = 503
+            with self.captureOnCommitCallbacks(execute=True):
+                response = self.client.post("/api/scans/", {}, format="json")
+        scan = Scan.objects.get(pk=response.data["id"])
+        self.assertEqual(scan.status, Scan.Status.FAILED)
+        self.assertIn("webcam desconectada", scan.error)
+
+    @override_settings(CAMERA_URL="http://camera:8080")
     def test_camera_preview_proxies_frame(self):
         with mock.patch("scans.camera.requests.get") as get:
+            get.return_value.status_code = 200
+            get.return_value.ok = True
             get.return_value.content = b"\xff\xd8jpeg"
             response = self.client.get("/api/camera/preview/")
         self.assertEqual(response.status_code, 200)
