@@ -1,0 +1,10 @@
+#!/bin/sh
+# Tras cada `git pull` (o merge) en main, actualiza contenedores y aplica migraciones.
+# Se activa una vez por clon con:  make hooks   (git config core.hooksPath .githooks)
+# Para saltarlo puntualmente:      SKIP_DEPLOY_HOOK=1 git pull
+[ "${SKIP_DEPLOY_HOOK:-0}" = "1" ] && exit 0
+[ "$(git rev-parse --abbrev-ref HEAD)" = "main" ] || exit 0
+command -v docker >/dev/null 2>&1 || { echo "post-merge: docker no disponible, se omite el despliegue"; exit 0; }
+
+echo "→ post-merge: actualizando contenedores (scripts/deploy.sh)…"
+SKIP_PULL=1 bash scripts/deploy.sh ORIG_HEAD

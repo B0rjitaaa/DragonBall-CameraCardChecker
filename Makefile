@@ -1,27 +1,31 @@
 COMPOSE ?= docker compose
-PI_COMPOSE = $(COMPOSE) --profile camera
 
-.PHONY: env up up-pi down logs build test shell superuser sync fingerprints import images catalog deploy-pi
+# Raspberry Pi (para los atajos que se lanzan desde el Mac por SSH)
+PI ?= raspi-j4r3tz@192.168.178.83
+PI_DIR ?= Development/DragonBall-CameraCardChecker
+
+.PHONY: env up down logs ps build test shell superuser migrate deploy hooks \
+	import images fingerprints catalog sync pi-deploy pi-logs
 
 env:
 	@test -f .env || cp .env.example .env && echo ".env listo"
 
-up: env
+up: env          ## Levanta todo (en la Pi incluye la cámara si COMPOSE_PROFILES=camera)
 	$(COMPOSE) up -d --build
 
-up-pi: env
-	$(PI_COMPOSE) up -d --build
-
-down:
-	$(PI_COMPOSE) down
+down:            ## Para los contenedores (los datos se conservan)
+	$(COMPOSE) down
 
 logs:
-	$(PI_COMPOSE) logs -f --tail=100
+	$(COMPOSE) logs -f --tail=100
+
+ps:
+	$(COMPOSE) ps
 
 build: env
-	$(PI_COMPOSE) build
+	$(COMPOSE) build
 
-test: env
+test: env        ## Tests del backend (SQLite, sin red)
 	$(COMPOSE) run --rm --no-deps -e POSTGRES_HOST= -e CELERY_TASK_ALWAYS_EAGER=1 backend python manage.py test
 
 shell:
@@ -30,36 +34,37 @@ shell:
 superuser:
 	$(COMPOSE) exec backend python manage.py createsuperuser
 
-# Sincroniza el catálogo con Bandai y encola el cálculo de fingerprints.
-sync:
-	$(COMPOSE) exec backend python manage.py sync_cards
+migrate:         ## Aplica migraciones pendientes
+	$(COMPOSE) exec backend python manage.py migrate
 
-fingerprints:
-	$(COMPOSE) exec backend python manage.py build_fingerprints
+# --- Despliegue (en la Raspberry Pi) ---
+deploy:          ## git pull + rebuild de lo que cambie + migraciones
+	bash scripts/deploy.sh
 
+hooks:           ## Activa el hook: cada `git pull` en main ejecuta scripts/deploy.sh
+	git config core.hooksPath .githooks
+	@echo "Hook post-merge activado en este clon."
+
+# --- Atajos desde el Mac ---
+pi-deploy:       ## Hace `git pull` en la Pi (el hook despliega). Antes: commit + push a main
+	ssh $(PI) 'cd $(PI_DIR) && git pull --ff-only'
+
+pi-logs:
+	ssh $(PI) 'cd $(PI_DIR) && docker compose logs -f --tail=100'
+
+# --- Catálogo ---
 # Catálogo exportado de DragonBall-EnhancedAPI (formato Bandai TCG+).
 FILE ?= data/cartas_dbs.json
-import:
+import:          ## Importa el JSON de cartas (inserta o actualiza)
 	$(COMPOSE) exec backend python manage.py import_cards /app/$(FILE)
 
-# Descarga a data/card_images las imágenes oficiales que falten (reanudable).
-images:
+images:          ## Descarga a data/card_images las imágenes oficiales que falten
 	$(COMPOSE) exec backend python manage.py download_card_images
 
-# Todo el catálogo desde cero: importar + imágenes + fingerprints.
-catalog: import images fingerprints
+fingerprints:    ## Calcula los fingerprints pendientes
+	$(COMPOSE) exec backend python manage.py build_fingerprints
 
-# --- Despliegue en la Raspberry Pi ---
-# Las imágenes se construyen en este equipo (arm64, como la Pi) y se envían ya
-# hechas: compilarlas en una Pi 3 con 1 GB de RAM es lentísimo.
-PI ?= raspi-j4r3tz@192.168.178.83
-PI_DIR ?= DragonBall-CardCameraApp
-RSYNC_EXCLUDES = --exclude .env --exclude 'data/card_images/' --exclude node_modules \
-	--exclude __pycache__ --exclude 'backend/media/' --exclude 'backend/db.sqlite3'
+catalog: import images fingerprints   ## Todo el catálogo desde cero
 
-deploy-pi:
-	$(PI_COMPOSE) build
-	rsync -az $(RSYNC_EXCLUDES) ./ $(PI):$(PI_DIR)/
-	docker save dbs-identifier-backend:latest dbs-identifier-frontend:latest dbs-identifier-camera:latest \
-		| gzip -1 | ssh $(PI) 'gunzip | docker load'
-	ssh $(PI) 'cd $(PI_DIR) && docker compose --profile camera up -d --no-build'
+sync:            ## Sincroniza con Bandai (PENDIENTE: ver cards/bandai.py)
+	$(COMPOSE) exec backend python manage.py sync_cards

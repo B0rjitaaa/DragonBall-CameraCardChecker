@@ -1,10 +1,14 @@
 # DBS Card Identifier
 #
 # Desarrollo (Mac/PC, sin webcam):   docker compose up -d --build
-# Raspberry Pi (con webcam USB):     docker compose --profile camera up -d --build
+# Raspberry Pi (con webcam USB):     COMPOSE_PROFILES=camera en .env (ver .env.example)
 #
 # Todas las imágenes base son multi-arquitectura (amd64 / arm64), así que el
 # mismo fichero sirve en el portátil y en la Pi (Raspberry Pi OS 64-bit).
+
+# Nombre fijo: contenedores y volúmenes (BD, media) no dependen del nombre de
+# la carpeta del clon.
+name: dragonball-cardcameraapp
 
 x-backend-common: &backend-common
   build: ./backend

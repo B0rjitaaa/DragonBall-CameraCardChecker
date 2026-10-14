@@ -45,26 +45,39 @@ make catalog        # = make import images fingerprints
 | `make images` | Descarga a `data/card_images/` las imágenes oficiales que falten (~1,3 GB, reanudable) | ~10 min |
 | `make fingerprints` | Calcula pHash/dHash/ORB de cada cara desde la caché local | minutos |
 
-`data/` está montado en los contenedores. Si copias la carpeta a la Pi junto al proyecto, la Pi no necesita volver a descargar las imágenes.
+`data/` está montado en los contenedores. `data/card_images/` no está en git: si la copias a la Pi, no hace falta volver a descargar las imágenes.
 
 ## Raspberry Pi 3 B+
 
+### Instalación (una vez)
+
 1. Instala **Raspberry Pi OS Lite 64-bit**. Todas las dependencias tienen wheels `aarch64`, así que nada se compila en la Pi.
 2. Instala Docker: `curl -fsSL https://get.docker.com | sh && sudo usermod -aG docker $USER`.
-3. Amplía el swap a 1 GB, que hace falta para el build del frontend: en `/etc/dphys-swapfile`, `CONF_SWAPSIZE=1024`, y después `sudo systemctl restart dphys-swapfile`.
-4. Copia el proyecto, revisa `.env` (sobre todo `DJANGO_SECRET_KEY` y `DJANGO_CSRF_TRUSTED_ORIGINS`) y ejecuta:
+3. Amplía el swap (al menos 1 GB) para el build del frontend: en `/etc/dphys-swapfile`, `CONF_SWAPSIZE=1024`, y después `sudo systemctl restart dphys-swapfile`.
+4. Clona el repo, crea el `.env` y activa el hook de despliegue:
 
 ```bash
-make up-pi   # = docker compose --profile camera up -d --build
+mkdir -p ~/Development && cd ~/Development
+git clone https://github.com/B0rjitaaa/DragonBall-CameraCardChecker.git
+cd DragonBall-CameraCardChecker
+cp .env.example .env    # descomenta COMPOSE_PROFILES=camera y revisa DJANGO_SECRET_KEY,
+                        # DJANGO_ALLOWED_HOSTS y DJANGO_CSRF_TRUSTED_ORIGINS
+make hooks              # cada `git pull` en main despliega solo
+make up
+make catalog            # o restaura un pg_dump de cards_card + cards_cardfingerprint (más rápido)
 ```
 
-Más rápido: construir en un equipo arm64 (p. ej. un Mac con Apple Silicon) y enviar las imágenes ya hechas por SSH:
+### Flujo de trabajo
 
-```bash
-make deploy-pi PI=usuario@ip-de-la-pi
-```
+1. **En el Mac:** haz los cambios, `make test`, commit y `git push` a `main`.
+2. **En la Pi:** `git pull`, o desde el Mac `make pi-deploy`, que hace el pull por SSH.
 
-El `.env` de la Pi no se sobrescribe. Para el catálogo, `make catalog` en la Pi, o restaurar un `pg_dump` de las tablas `cards_card` y `cards_cardfingerprint` (mucho más rápido que recalcular los fingerprints allí).
+El hook `post-merge` ejecuta `scripts/deploy.sh`, que:
+- reconstruye solo las imágenes de los directorios que han cambiado (`backend/`, `frontend/`, `camera/`). Con la caché de Docker, un cambio de código tarda segundos; si cambian `requirements.txt` o `package.json`, varios minutos.
+- recrea los contenedores afectados y aplica las migraciones.
+- borra las imágenes antiguas para no llenar la SD.
+
+Para saltarse el hook puntualmente: `SKIP_DEPLOY_HOOK=1 git pull`. Para forzar una reconstrucción completa: `FORCE=1 make deploy`.
 
 ### Cámara
 
@@ -76,7 +89,7 @@ El `.env` de la Pi no se sobrescribe. Para el catálogo, `make catalog` en la Pi
 docker compose exec camera v4l2-ctl --list-ctrls      # controles disponibles
 # en .env, p. ej.:
 CAMERA_CONTROLS=focus_automatic_continuous=0,focus_absolute=300
-docker compose --profile camera up -d camera          # aplicar
+docker compose up -d camera                           # aplicar
 ```
 
 ## API
