@@ -117,6 +117,10 @@ class Camera:
         haría identificar lo que había delante de la cámara hace minutos.
         """
         self._last_request = time.monotonic()
+        if not self.opened:
+            # Webcam desconectada: responder ya, sin esperar WAIT_TIMEOUT. Si no,
+            # cada vista previa tardaba 3 s y acababa bloqueando el backend.
+            return None, 0.0
         with self._cond:
             fresh = lambda: self._frame is not None and time.monotonic() - self._frame_at <= max_age  # noqa: E731
             if not self._cond.wait_for(fresh, timeout=WAIT_TIMEOUT):

@@ -1,29 +1,54 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { api } from "../api";
 import ScanResult from "../components/ScanResult";
 
-const PREVIEW_INTERVAL_MS = 700;
+const PREVIEW_INTERVAL_MS = 500;
+const RETRY_INTERVAL_MS = 5000;
+// Pestaña en segundo plano: no hace falta refrescar la vista previa.
+const HIDDEN_INTERVAL_MS = 10000;
 
 function CameraPreview() {
   const [src, setSrc] = useState(api.previewUrl);
   const [failed, setFailed] = useState(false);
+  const timer = useRef<number>();
 
-  useEffect(() => {
-    const timer = window.setInterval(() => setSrc(api.previewUrl()), PREVIEW_INTERVAL_MS);
-    return () => window.clearInterval(timer);
-  }, []);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
 
-  if (failed) {
-    return (
-      <div className="preview placeholder">
-        Cámara no disponible. Puedes subir una foto.
-        <button onClick={() => setFailed(false)}>Reintentar</button>
-      </div>
+  // Un solo frame en vuelo: el siguiente se pide cuando el anterior termina.
+  // Con setInterval, si el backend tardaba, las peticiones se acumulaban.
+  const scheduleNext = (delay: number) => {
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(
+      () => setSrc(api.previewUrl()),
+      document.hidden ? HIDDEN_INTERVAL_MS : delay,
     );
-  }
-  return <img className="preview" src={src} alt="Vista previa" onError={() => setFailed(true)} />;
+  };
+
+  return (
+    <div className="preview-wrap">
+      <img
+        className="preview"
+        src={src}
+        alt="Vista previa"
+        hidden={failed}
+        onLoad={() => {
+          setFailed(false);
+          scheduleNext(PREVIEW_INTERVAL_MS);
+        }}
+        onError={() => {
+          setFailed(true);
+          scheduleNext(RETRY_INTERVAL_MS);
+        }}
+      />
+      {failed && (
+        <div className="preview placeholder">
+          Cámara no disponible (¿webcam desconectada?). Reintentando… Mientras tanto puedes subir una foto.
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function Scanner() {
