@@ -374,6 +374,41 @@ button.stop {
   font-size: 0.85rem;
 }
 
+.copies-input {
+  display: inline-flex;
+  align-items: stretch;
+}
+
+.burst-actions .copies-input button {
+  padding: 4px 10px;
+  min-width: 34px;
+}
+
+.copies-input button:first-child {
+  border-radius: 6px 0 0 6px;
+}
+
+.copies-input button:last-child {
+  border-radius: 0 6px 6px 0;
+}
+
+.copies-input input {
+  width: 3.2em;
+  padding: 4px 2px;
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+  text-align: center;
+  font-size: 0.95rem;
+  -moz-appearance: textfield;
+}
+
+.copies-input input::-webkit-outer-spin-button,
+.copies-input input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 .badge.muted {
   color: var(--muted);
 }

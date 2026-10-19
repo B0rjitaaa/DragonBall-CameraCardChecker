@@ -314,6 +314,22 @@ class BurstModeTests(BurstFixture, TestCase):
         self.client.post(f"/api/scans/{first_id}/undo/", {}, format="json")
         self.assertEqual(self._quantity(self.cards[4]), 0)  # la entrada se borra
 
+    def test_changing_the_copies_of_an_added_scan(self):
+        scan = self._scan(self._card_photo(4))
+        url = f"/api/scans/{scan['id']}/copies/"
+        self.assertEqual(self.client.post(url, {"copies": 3}, format="json").data["copies"], 3)
+        self.assertEqual(self._quantity(self.cards[4]), 3)
+        self.client.post(url, {"copies": 2}, format="json")
+        self.assertEqual(self._quantity(self.cards[4]), 2)
+        self.assertEqual(self.client.post(url, {"copies": 0}, format="json").status_code, 400)
+        # Corregir la carta mueve todas sus copias; deshacer las quita todas.
+        self.client.post(f"/api/scans/{scan['id']}/confirm/", {"card_id": self.cards[6].id}, format="json")
+        self.assertEqual(self._quantity(self.cards[4]), 0)
+        self.assertEqual(self._quantity(self.cards[6]), 2)
+        self.client.post(f"/api/scans/{scan['id']}/undo/", {}, format="json")
+        self.assertEqual(self._quantity(self.cards[6]), 0)
+        self.assertEqual(self.client.post(url, {"copies": 2}, format="json").status_code, 400)
+
     def test_correcting_an_added_scan_moves_the_copy(self):
         scan = self._scan(self._card_photo(4))
         self.client.post(f"/api/scans/{scan['id']}/confirm/", {"card_id": self.cards[6].id}, format="json")
@@ -377,6 +393,18 @@ class RepeatGuardTests(BurstFixture, TestCase):
         other = self._scan(self._card_photo(6), after_empty=False)
         self.assertTrue(other["added_to_collection"])
         self.assertFalse(other["repeat_suspect"])
+
+    def test_confirming_the_repeat_with_several_copies(self):
+        self._scan(self._card_photo(4))
+        repeat = self._scan(self._card_photo(4), after_empty=False)
+        data = self.client.post(
+            f"/api/scans/{repeat['id']}/confirm/", {"card_id": self.cards[4].id, "copies": 3}, format="json"
+        ).data
+        self.assertEqual(data["copies"], 3)
+        self.assertEqual(self._quantity(self.cards[4]), 4)
+        self.assertEqual(self._stats()["copies"], 4)
+        self.client.post(f"/api/scans/{repeat['id']}/undo/", {}, format="json")
+        self.assertEqual(self._quantity(self.cards[4]), 1)
 
     def test_previous_undone_does_not_block(self):
         first = self._scan(self._card_photo(4))

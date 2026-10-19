@@ -66,6 +66,8 @@ class Scan(models.Model):
     collection_entry = models.ForeignKey(
         CollectionEntry, null=True, blank=True, on_delete=models.SET_NULL, related_name="scans"
     )
+    # Copias que suma este escaneo (o sumará al confirmarlo).
+    copies = models.PositiveSmallIntegerField(default=1)
     # Descartado: deshecho por el usuario o disparo sin carta (zona vacía).
     dismissed = models.BooleanField(default=False)
     # Lo envía el navegador: ¿quedó vacía la zona desde la captura anterior?

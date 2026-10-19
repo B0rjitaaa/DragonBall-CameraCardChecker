@@ -90,24 +90,28 @@ def learn_from_scan(scan, card) -> CardFingerprint:
     return fingerprint
 
 
+def _collection_condition(scan):
+    return scan.session.condition if scan.session_id else CollectionEntry.Condition.NEAR_MINT
+
+
 def add_scan_to_collection(scan) -> None:
-    """Suma 1 copia de la carta del escaneo a la colección (idempotente)."""
+    """Suma las copias del escaneo (scan.copies) a la colección (idempotente)."""
     if scan.added_to_collection or not scan.matched_card_id:
         return
-    condition = scan.session.condition if scan.session_id else CollectionEntry.Condition.NEAR_MINT
+    copies = max(scan.copies, 1)
     with transaction.atomic():
         entry, created = CollectionEntry.objects.select_for_update().get_or_create(
-            card_id=scan.matched_card_id, condition=condition, defaults={"quantity": 1}
+            card_id=scan.matched_card_id, condition=_collection_condition(scan), defaults={"quantity": copies}
         )
         if not created:
-            CollectionEntry.objects.filter(pk=entry.pk).update(quantity=F("quantity") + 1)
+            CollectionEntry.objects.filter(pk=entry.pk).update(quantity=F("quantity") + copies)
         scan.added_to_collection = True
         scan.collection_entry = entry
         scan.save(update_fields=["added_to_collection", "collection_entry"])
 
 
 def remove_scan_from_collection(scan) -> None:
-    """Deshace add_scan_to_collection: resta 1 copia (y borra la entrada si queda a 0)."""
+    """Deshace add_scan_to_collection: resta sus copias (y borra la entrada si queda a 0)."""
     if not scan.added_to_collection:
         return
     with transaction.atomic():
@@ -115,13 +119,26 @@ def remove_scan_from_collection(scan) -> None:
             CollectionEntry.objects.select_for_update().filter(pk=scan.collection_entry_id).first()
         )
         if entry is not None:
-            if entry.quantity <= 1:
+            if entry.quantity <= scan.copies:
                 entry.delete()
             else:
-                CollectionEntry.objects.filter(pk=entry.pk).update(quantity=F("quantity") - 1)
+                CollectionEntry.objects.filter(pk=entry.pk).update(quantity=F("quantity") - scan.copies)
         scan.added_to_collection = False
         scan.collection_entry = None
         scan.save(update_fields=["added_to_collection", "collection_entry"])
+
+
+def set_scan_copies(scan, copies: int) -> None:
+    """Cambia cuántas copias suma un escaneo ya añadido (ajusta la colección por la diferencia)."""
+    if not scan.added_to_collection:
+        scan.copies = copies
+        scan.save(update_fields=["copies"])
+        return
+    with transaction.atomic():
+        remove_scan_from_collection(scan)
+        scan.copies = copies
+        scan.save(update_fields=["copies"])
+        add_scan_to_collection(scan)
 
 
 def apply_burst_rules(scan) -> None:

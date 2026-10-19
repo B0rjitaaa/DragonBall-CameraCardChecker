@@ -8,8 +8,8 @@ from rest_framework.response import Response
 
 from . import camera
 from .models import Scan, ScanSession
-from .serializers import ConfirmScanSerializer, ScanSerializer, ScanSessionSerializer
-from .services import add_scan_to_collection, learn_from_scan, remove_scan_from_collection
+from .serializers import ConfirmScanSerializer, ScanCopiesSerializer, ScanSerializer, ScanSessionSerializer
+from .services import add_scan_to_collection, learn_from_scan, remove_scan_from_collection, set_scan_copies
 from .tasks import identify_card
 
 
@@ -64,10 +64,28 @@ class ScanViewSet(
             scan.needs_review = False
             scan.dismissed = False
             scan.repeat_suspect = False  # confirmar = "sí, es otra copia"
-            scan.save(update_fields=["matched_card", "confirmed", "needs_review", "dismissed", "repeat_suspect"])
+            if scan.session_id and "copies" in serializer.validated_data:
+                scan.copies = serializer.validated_data["copies"]
+            scan.save(
+                update_fields=["matched_card", "confirmed", "needs_review", "dismissed", "repeat_suspect", "copies"]
+            )
             if scan.session_id:
                 # En modo ráfaga, confirmar = añadir a la colección.
                 add_scan_to_collection(scan)
+        return Response(self.get_serializer(scan).data)
+
+    @action(detail=True, methods=["post"], parser_classes=[JSONParser])
+    def copies(self, request, pk=None):
+        """Modo ráfaga: cuántas copias de la carta suma este escaneo a la colección."""
+        scan = self.get_object()
+        if not scan.session_id or not scan.added_to_collection:
+            return Response(
+                {"detail": "Solo se pueden cambiar las copias de una carta añadida en modo ráfaga"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        serializer = ScanCopiesSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        set_scan_copies(scan, serializer.validated_data["copies"])
         return Response(self.get_serializer(scan).data)
 
     @action(detail=True, methods=["post"])

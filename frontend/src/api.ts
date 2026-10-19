@@ -38,8 +38,10 @@ export const api = {
   getSession: (id: number) => request<ScanSession>(`/api/sessions/${id}/`),
   endSession: (id: number) => request<ScanSession>(`/api/sessions/${id}/end/`, json("POST", {})),
   getScan: (id: number) => request<Scan>(`/api/scans/${id}/`),
-  confirmScan: (id: number, cardId: number) =>
-    request<Scan>(`/api/scans/${id}/confirm/`, json("POST", { card_id: cardId })),
+  confirmScan: (id: number, cardId: number, copies?: number) =>
+    request<Scan>(`/api/scans/${id}/confirm/`, json("POST", copies ? { card_id: cardId, copies } : { card_id: cardId })),
+  setScanCopies: (id: number, copies: number) =>
+    request<Scan>(`/api/scans/${id}/copies/`, json("POST", { copies })),
   listScans: (page = 1) => request<Page<Scan>>(`/api/scans/?page=${page}`),
 
   listCards: (params: URLSearchParams) => request<Page<Card>>(`/api/cards/?${params}`),

@@ -17,6 +17,76 @@ function rowState(s: SessionScan): { label: string; tone: "ok" | "warn" | "muted
   return { label: "Por revisar", tone: "warn" };
 }
 
+const MAX_COPIES = 99;
+const clampCopies = (n: number) => Math.min(MAX_COPIES, Math.max(1, Math.round(n) || 1));
+
+/** − [n] +: se puede escribir el número o usar los botones. */
+function CopiesInput({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  disabled?: boolean;
+}) {
+  const [draft, setDraft] = useState(String(value));
+  const [editing, setEditing] = useState(false);
+  useEffect(() => {
+    if (!editing) setDraft(String(value));
+  }, [value, editing]);
+
+  const commit = (n: number) => {
+    const next = clampCopies(n);
+    setDraft(String(next));
+    if (next !== value) onChange(next);
+  };
+
+  return (
+    <span className="copies-input">
+      <button
+        type="button"
+        className="secondary"
+        aria-label="Una copia menos"
+        disabled={disabled || value <= 1}
+        onClick={() => commit(value - 1)}
+      >
+        −
+      </button>
+      <input
+        type="number"
+        inputMode="numeric"
+        min={1}
+        max={MAX_COPIES}
+        aria-label="Copias"
+        value={draft}
+        disabled={disabled}
+        onFocus={(e) => {
+          setEditing(true);
+          e.target.select();
+        }}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => {
+          setEditing(false);
+          commit(Number(draft));
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+        }}
+      />
+      <button
+        type="button"
+        className="secondary"
+        aria-label="Una copia más"
+        disabled={disabled || value >= MAX_COPIES}
+        onClick={() => commit(value + 1)}
+      >
+        +
+      </button>
+    </span>
+  );
+}
+
 function ReviewModal({ scanId, onClose }: { scanId: number; onClose: () => void }) {
   const scan = useQuery({ queryKey: ["scan", scanId], queryFn: () => api.getScan(scanId) });
   return (
@@ -35,6 +105,8 @@ function ReviewModal({ scanId, onClose }: { scanId: number; onClose: () => void 
 export default function BurstPanel({ sessionId, active }: { sessionId: number; active: boolean }) {
   const queryClient = useQueryClient();
   const [reviewing, setReviewing] = useState<number | null>(null);
+  // Copias elegidas en las filas "¿Otra copia?" antes de añadirlas.
+  const [pendingCopies, setPendingCopies] = useState<Record<number, number>>({});
   const announced = useRef<Set<number> | null>(null);
 
   const session = useQuery({
@@ -44,7 +116,15 @@ export default function BurstPanel({ sessionId, active }: { sessionId: number; a
   });
 
   const addCopy = useMutation({
-    mutationFn: (s: SessionScan) => api.confirmScan(s.id, s.card_id!),
+    mutationFn: (s: SessionScan) => api.confirmScan(s.id, s.card_id!, pendingCopies[s.id] ?? 1),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
+      void queryClient.invalidateQueries({ queryKey: ["collection"] });
+    },
+  });
+
+  const setCopies = useMutation({
+    mutationFn: ({ id, copies }: { id: number; copies: number }) => api.setScanCopies(id, copies),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
       void queryClient.invalidateQueries({ queryKey: ["collection"] });
@@ -86,7 +166,7 @@ export default function BurstPanel({ sessionId, active }: { sessionId: number; a
       <div className="burst-stats">
         <div>
           <strong>{stats.added}</strong>
-          <span>añadidas</span>
+          <span>{stats.copies > stats.added ? `añadidas · ${stats.copies} copias` : "añadidas"}</span>
         </div>
         <div className={stats.review ? "warn" : ""}>
           <strong>{stats.review}</strong>
@@ -98,8 +178,9 @@ export default function BurstPanel({ sessionId, active }: { sessionId: number; a
         </div>
       </div>
       <p className="muted small">
-        Se añaden solas a la colección a partir del {percent(auto_add_min_confidence)} (1 copia, Near Mint). Por debajo
-        quedan "por revisar". Si la misma carta sale dos veces seguidas sin retirarla, se pregunta "¿Otra copia?".
+        Se añaden solas a la colección a partir del {percent(auto_add_min_confidence)} (1 copia, Near Mint; con − / +
+        cambias cuántas). Por debajo quedan "por revisar". Si la misma carta sale dos veces seguidas sin retirarla, se
+        pregunta "¿Otra copia?" y eliges cuántas añadir.
       </p>
 
       {scans.length === 0 ? (
@@ -122,9 +203,23 @@ export default function BurstPanel({ sessionId, active }: { sessionId: number; a
                 <span className={`badge ${state.tone}`}>{state.label}</span>
                 <div className="burst-actions">
                   {done && !s.added_to_collection && s.repeat_suspect && s.card_id != null && (
-                    <button disabled={addCopy.isPending} onClick={() => addCopy.mutate(s)}>
-                      Añadir copia
-                    </button>
+                    <>
+                      <CopiesInput
+                        value={pendingCopies[s.id] ?? 1}
+                        disabled={addCopy.isPending}
+                        onChange={(n) => setPendingCopies((p) => ({ ...p, [s.id]: n }))}
+                      />
+                      <button disabled={addCopy.isPending} onClick={() => addCopy.mutate(s)}>
+                        {(pendingCopies[s.id] ?? 1) > 1 ? `Añadir ${pendingCopies[s.id]} copias` : "Añadir copia"}
+                      </button>
+                    </>
+                  )}
+                  {done && s.added_to_collection && (
+                    <CopiesInput
+                      value={s.copies}
+                      disabled={setCopies.isPending}
+                      onChange={(copies) => setCopies.mutate({ id: s.id, copies })}
+                    />
                   )}
                   {done && !s.added_to_collection && !s.repeat_suspect && (
                     <button className="secondary" onClick={() => setReviewing(s.id)}>

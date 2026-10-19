@@ -88,6 +88,7 @@ export interface SessionScan {
   needs_review: boolean;
   confirmed: boolean;
   added_to_collection: boolean;
+  copies: number;
   dismissed: boolean;
   repeat_suspect: boolean;
   error: string;
@@ -101,6 +102,6 @@ export interface ScanSession {
   ended_at: string | null;
   condition: string;
   auto_add_min_confidence: number;
-  stats: { total: number; added: number; review: number; pending: number; failed: number; undone: number };
+  stats: { total: number; added: number; copies: number; review: number; pending: number; failed: number; undone: number };
   scans: SessionScan[];
 }

@@ -25,6 +25,7 @@ class ScanSerializer(serializers.ModelSerializer):
             "confirmed",
             "session",
             "added_to_collection",
+            "copies",
             "dismissed",
             "after_empty",
             "repeat_suspect",
@@ -45,6 +46,12 @@ class ScanSerializer(serializers.ModelSerializer):
 
 class ConfirmScanSerializer(serializers.Serializer):
     card_id = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all(), source="card")
+    # Modo ráfaga: cuántas copias añadir (por defecto, las que ya tenga el escaneo).
+    copies = serializers.IntegerField(min_value=1, max_value=99, required=False)
+
+
+class ScanCopiesSerializer(serializers.Serializer):
+    copies = serializers.IntegerField(min_value=1, max_value=99)
 
 
 class SessionScanSerializer(serializers.ModelSerializer):
@@ -68,6 +75,7 @@ class SessionScanSerializer(serializers.ModelSerializer):
             "needs_review",
             "confirmed",
             "added_to_collection",
+            "copies",
             "dismissed",
             "repeat_suspect",
             "error",
@@ -100,6 +108,7 @@ class ScanSessionSerializer(serializers.ModelSerializer):
         return {
             "total": len(scans),
             "added": sum(s.added_to_collection for s in done),
+            "copies": sum(s.copies for s in done if s.added_to_collection),
             "review": sum(not s.added_to_collection for s in done),
             "pending": sum(s.status in (Scan.Status.PENDING, Scan.Status.PROCESSING) for s in scans),
             "failed": sum(s.status == Scan.Status.FAILED for s in scans),
