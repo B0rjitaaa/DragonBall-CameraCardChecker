@@ -167,6 +167,43 @@ select {
   margin-top: 12px;
 }
 
+.button.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.webcam-section {
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--surface);
+}
+
+.webcam-section summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.webcam-section[open] summary {
+  margin-bottom: 10px;
+}
+
+/* Móvil: botones a todo el ancho y fáciles de pulsar. */
+@media (max-width: 600px) {
+  .actions > button,
+  .actions > .button {
+    flex: 1 1 100%;
+    justify-content: center;
+    padding: 12px 14px;
+    font-size: 1.05rem;
+  }
+
+  .topbar h1 {
+    font-size: 1rem;
+  }
+}
+
 .scan-meta {
   display: flex;
   flex-wrap: wrap;
