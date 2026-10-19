@@ -14,6 +14,12 @@ const TABS = {
 
 type TabKey = keyof typeof TABS;
 
+// "Mi colección" vive en DragonBall-EnhancedAPI (mismo servidor, puerto 5173):
+// allí se ve la colección escaneada con su ficha completa. La vista interna de
+// colección sigue existiendo (#collection) pero ya no sale en el menú.
+const NAV: TabKey[] = ["scanner", "catalog", "history"];
+const COLLECTION_URL = `http://${window.location.hostname}:5173/coleccion`;
+
 function currentTab(): TabKey {
   const hash = window.location.hash.slice(1);
   return hash in TABS ? (hash as TabKey) : "scanner";
@@ -34,11 +40,14 @@ export default function App() {
       <header className="topbar">
         <h1>DBS Card Identifier</h1>
         <nav>
-          {(Object.keys(TABS) as TabKey[]).map((key) => (
+          {NAV.map((key) => (
             <a key={key} href={`#${key}`} className={key === tab ? "active" : ""}>
               {TABS[key].label}
             </a>
           ))}
+          <a href={COLLECTION_URL} title="Abre Mi colección en DragonBall-EnhancedAPI">
+            Mi colección ↗
+          </a>
         </nav>
       </header>
       <main>

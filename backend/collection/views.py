@@ -1,6 +1,7 @@
 from django.db import transaction
 from django.db.models import F
 from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from .models import CollectionEntry
@@ -32,4 +33,27 @@ class CollectionEntryViewSet(viewsets.ModelViewSet):
         return Response(
             self.get_serializer(entry).data,
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+    @action(detail=False)
+    def export(self, request):
+        """Colección completa en formato compacto, sin paginar.
+
+        La consume DragonBall-EnhancedAPI ("Mi colección"), que la cruza con su
+        catálogo por el id de Bandai (la clave común de los dos proyectos).
+        """
+        rows = self.get_queryset().order_by("card__card_number", "condition").values_list(
+            "card__bandai_id", "card__card_number", "card__name", "quantity", "condition"
+        )
+        return Response(
+            [
+                {
+                    "bandai_id": bandai_id,
+                    "card_number": number,
+                    "name": name,
+                    "quantity": quantity,
+                    "condition": condition,
+                }
+                for bandai_id, number, name, quantity, condition in rows
+            ]
         )

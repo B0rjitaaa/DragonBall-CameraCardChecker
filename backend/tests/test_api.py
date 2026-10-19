@@ -383,3 +383,20 @@ class RepeatGuardTests(BurstFixture, TestCase):
         self.client.post(f"/api/scans/{first['id']}/undo/", {}, format="json")
         again = self._scan(self._card_photo(4), after_empty=False)
         self.assertTrue(again["added_to_collection"])
+
+
+
+class CollectionExportTests(TestCase):
+    def test_export_lists_every_entry_with_bandai_id(self):
+        from collection.models import CollectionEntry
+
+        a = Card.objects.create(bandai_id=4, card_number="BT1-001", name="Champa")
+        b = Card.objects.create(bandai_id=1088, card_number="BT1-005", name="Champa PR")
+        CollectionEntry.objects.create(card=a, quantity=2)
+        CollectionEntry.objects.create(card=a, quantity=1, condition="played")
+        CollectionEntry.objects.create(card=b, quantity=1)
+        data = APIClient().get("/api/collection/export/").data
+        self.assertEqual(len(data), 3)  # sin paginar
+        self.assertEqual(
+            data[0], {"bandai_id": 4, "card_number": "BT1-001", "name": "Champa", "quantity": 2, "condition": "near_mint"}
+        )
