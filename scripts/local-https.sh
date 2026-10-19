@@ -25,7 +25,10 @@ fi
 
 DIR=certs
 mkdir -p "$DIR"
-chmod 700 "$DIR"
+# 755: los workers de Nginx (usuario nginx) tienen que poder leer ca.crt para
+# servirlo en /ca.crt. Las claves privadas quedan en 600 (solo las lee el
+# proceso maestro de Nginx, que corre como root).
+chmod 755 "$DIR"
 
 if [ ! -f "$DIR/ca.key" ]; then
     echo "→ Creando la CA local…"
