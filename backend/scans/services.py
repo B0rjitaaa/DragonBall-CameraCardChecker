@@ -6,9 +6,11 @@ import time
 
 import numpy as np
 from django.conf import settings
-from django.db.models import Count, Max
+from django.db import transaction
+from django.db.models import Count, F, Max
 
 from cards.models import Card, CardFingerprint
+from collection.models import CollectionEntry
 from vision import fingerprint as fp
 from vision.matcher import FingerprintIndex, MatchResult, identify
 from vision.preprocess import decode_image
@@ -86,6 +88,53 @@ def learn_from_scan(scan, card) -> CardFingerprint:
         },
     )
     return fingerprint
+
+
+def add_scan_to_collection(scan) -> None:
+    """Suma 1 copia de la carta del escaneo a la colección (idempotente)."""
+    if scan.added_to_collection or not scan.matched_card_id:
+        return
+    condition = scan.session.condition if scan.session_id else CollectionEntry.Condition.NEAR_MINT
+    with transaction.atomic():
+        entry, created = CollectionEntry.objects.select_for_update().get_or_create(
+            card_id=scan.matched_card_id, condition=condition, defaults={"quantity": 1}
+        )
+        if not created:
+            CollectionEntry.objects.filter(pk=entry.pk).update(quantity=F("quantity") + 1)
+        scan.added_to_collection = True
+        scan.collection_entry = entry
+        scan.save(update_fields=["added_to_collection", "collection_entry"])
+
+
+def remove_scan_from_collection(scan) -> None:
+    """Deshace add_scan_to_collection: resta 1 copia (y borra la entrada si queda a 0)."""
+    if not scan.added_to_collection:
+        return
+    with transaction.atomic():
+        entry = (
+            CollectionEntry.objects.select_for_update().filter(pk=scan.collection_entry_id).first()
+        )
+        if entry is not None:
+            if entry.quantity <= 1:
+                entry.delete()
+            else:
+                CollectionEntry.objects.filter(pk=entry.pk).update(quantity=F("quantity") - 1)
+        scan.added_to_collection = False
+        scan.collection_entry = None
+        scan.save(update_fields=["added_to_collection", "collection_entry"])
+
+
+def apply_burst_rules(scan) -> None:
+    """Tras identificar un escaneo de una sesión de modo ráfaga."""
+    if not scan.session_id or scan.status != scan.Status.DONE:
+        return
+    confidence = scan.confidence or 0.0
+    if not scan.card_detected and confidence < settings.MATCH_MIN_CONFIDENCE:
+        # Disparo sobre la zona vacía (se retiró la carta): no es una carta.
+        scan.dismissed = True
+        scan.save(update_fields=["dismissed"])
+    elif confidence >= settings.AUTO_ADD_MIN_CONFIDENCE:
+        add_scan_to_collection(scan)
 
 
 def serialize_candidates(result: MatchResult, limit: int = 5) -> list[dict]:

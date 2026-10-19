@@ -18,6 +18,8 @@ export default function ScanResult({ scan }: { scan: Scan }) {
     onSuccess: (updated) => {
       queryClient.setQueryData(["scan", scan.id], updated);
       queryClient.invalidateQueries({ queryKey: ["scans"] });
+      queryClient.invalidateQueries({ queryKey: ["session"] });
+      queryClient.invalidateQueries({ queryKey: ["collection"] });
       setCorrecting(false);
     },
   });
@@ -29,7 +31,9 @@ export default function ScanResult({ scan }: { scan: Scan }) {
     return <p className="error">Error: {scan.error}</p>;
   }
 
-  const unsure = scan.needs_review && !scan.confirmed;
+  // En modo ráfaga, lo que no se añadió solo se confirma eligiendo la carta.
+  const pendingInSession = scan.session != null && !scan.added_to_collection && !scan.dismissed;
+  const unsure = (scan.needs_review || pendingInSession) && !scan.confirmed;
   const picking = unsure || correcting;
   const current = confirm.data ?? scan;
 
@@ -69,7 +73,8 @@ export default function ScanResult({ scan }: { scan: Scan }) {
             </>
           ) : current.matched_card ? (
             <>
-              <CardDetail card={current.matched_card} />
+              {/* En una sesión la colección la gestiona el modo ráfaga: sin botón de añadir. */}
+              <CardDetail card={current.matched_card} showAddButton={current.session == null} />
               {!current.confirmed && (
                 <button className="link" onClick={() => setCorrecting(true)}>
                   ¿No es esta carta? Corregir

@@ -1,17 +1,22 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { type RefObject, useEffect, useRef, useState } from "react";
 
 import { api } from "../api";
-import { frameFromVideo, preparePhoto } from "../lib/photo";
+import BurstPanel from "../components/BurstPanel";
 import DeviceCamera, { deviceCameraSupported, type Facing } from "../components/DeviceCamera";
 import ScanResult from "../components/ScanResult";
+import { ChangeDetector, type DetectorState } from "../lib/changeDetector";
+import { frameFromVideo, preparePhoto } from "../lib/photo";
+import { unlockAudio } from "../lib/sounds";
 
 const PREVIEW_INTERVAL_MS = 500;
 const RETRY_INTERVAL_MS = 5000;
 // Pestaña en segundo plano: no hace falta refrescar la vista previa.
 const HIDDEN_INTERVAL_MS = 10000;
+// Cada cuánto el modo ráfaga mira si ha cambiado la carta.
+const DETECT_INTERVAL_MS = 150;
 
-function CameraPreview() {
+function CameraPreview({ imgRef }: { imgRef: RefObject<HTMLImageElement> }) {
   const [src, setSrc] = useState(api.previewUrl);
   const [failed, setFailed] = useState(false);
   const timer = useRef<number>();
@@ -31,6 +36,7 @@ function CameraPreview() {
   return (
     <div className="preview-wrap">
       <img
+        ref={imgRef}
         className="preview"
         src={src}
         alt="Vista previa"
@@ -46,7 +52,8 @@ function CameraPreview() {
       />
       {failed && (
         <div className="preview placeholder">
-          Webcam del escáner no disponible (¿desconectada?). Reintentando… Prueba con la cámara de este dispositivo o sube una foto.
+          Webcam del escáner no disponible (¿desconectada?). Reintentando… Prueba con la cámara de este dispositivo o
+          sube una foto.
         </div>
       )}
     </div>
@@ -90,16 +97,34 @@ function UploadButton({ disabled, onPhoto }: { disabled: boolean; onPhoto: (file
   );
 }
 
+const DETECTOR_LABELS: Record<DetectorState, string> = {
+  idle: "Esperando carta…",
+  moving: "Movimiento: deja la carta quieta",
+  settling: "Carta quieta…",
+};
+
 export default function Scanner() {
+  const queryClient = useQueryClient();
   const [source, setSource] = useState<Source>(initialSource);
   const [facing, setFacing] = useState<Facing>("environment");
   const [scanId, setScanId] = useState<number | null>(null);
   const [phase, setPhase] = useState<"preparing" | "uploading" | null>(null);
   const [captureError, setCaptureError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const previewRef = useRef<HTMLImageElement>(null);
+
+  // Modo ráfaga: sesión activa (o la última, para seguir viendo su resumen).
+  const [burstId, setBurstId] = useState<number | null>(null);
+  const [burstActive, setBurstActive] = useState(false);
+  const [detectorState, setDetectorState] = useState<DetectorState>("idle");
+  const [sending, setSending] = useState(false);
+  const detector = useRef<ChangeDetector | null>(null);
+  const inFlight = useRef(false);
+  const pendingFire = useRef(false);
 
   const chooseSource = (next: Source) => {
     setSource(next);
+    detector.current?.reset();
     try {
       localStorage.setItem(SOURCE_KEY, next);
     } catch {
@@ -138,8 +163,78 @@ export default function Scanner() {
     },
   });
 
+  /** Envía el fotograma actual a la sesión de modo ráfaga (sin esperar a identificar). */
+  const sendToSession = async (session: number) => {
+    if (inFlight.current) {
+      pendingFire.current = true; // se cambió de carta mientras se enviaba la anterior
+      return;
+    }
+    inFlight.current = true;
+    setSending(true);
+    try {
+      if (source === "device") {
+        if (!videoRef.current) throw new Error("La cámara no está activa");
+        await api.createScan(await frameFromVideo(videoRef.current), session);
+      } else {
+        await api.createScan(undefined, session);
+      }
+      setCaptureError(null);
+      void queryClient.invalidateQueries({ queryKey: ["session", session] });
+    } catch (err) {
+      setCaptureError(err instanceof Error ? err.message : String(err));
+    } finally {
+      inFlight.current = false;
+      setSending(false);
+      if (pendingFire.current) {
+        pendingFire.current = false;
+        void sendToSession(session);
+      }
+    }
+  };
+
+  // Bucle del detector mientras la sesión está activa.
+  useEffect(() => {
+    if (!burstActive || burstId == null) return;
+    detector.current ??= new ChangeDetector();
+    const timer = window.setInterval(() => {
+      const d = detector.current;
+      const src = source === "device" ? videoRef.current : previewRef.current;
+      if (!d || !src) return;
+      const fire = d.feed(src, performance.now());
+      setDetectorState(d.state);
+      if (fire) void sendToSession(burstId);
+    }, DETECT_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [burstActive, burstId, source]); // sendToSession solo depende de source y burstId
+
+  const startBurst = async () => {
+    unlockAudio(); // iOS: el sonido solo se activa tras un toque
+    setCaptureError(null);
+    try {
+      const session = await api.createSession();
+      detector.current = new ChangeDetector(); // el primer fotograma será el fondo vacío
+      setBurstId(session.id);
+      setBurstActive(true);
+    } catch (err) {
+      setCaptureError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const stopBurst = async () => {
+    setBurstActive(false);
+    if (burstId != null) {
+      await api.endSession(burstId).catch(() => undefined);
+      void queryClient.invalidateQueries({ queryKey: ["session", burstId] });
+    }
+  };
+
   const busy = create.isPending;
-  const capture = async () => {
+  const captureManual = async () => {
+    setCaptureError(null);
+    if (burstActive && burstId != null) {
+      void sendToSession(burstId); // en sesión, la captura manual entra en la sesión
+      return;
+    }
     if (source === "server") {
       create.mutate({});
       return;
@@ -176,20 +271,30 @@ export default function Scanner() {
         </div>
 
         <div className="camera-frame">
-          {source === "device" ? <DeviceCamera videoRef={videoRef} facing={facing} /> : <CameraPreview />}
+          {source === "device" ? (
+            <DeviceCamera videoRef={videoRef} facing={facing} />
+          ) : (
+            <CameraPreview imgRef={previewRef} />
+          )}
           {/* Guía con la proporción de una carta (63 × 88 mm) para encuadrarla. */}
           <div className="card-guide" aria-hidden="true" />
+          {burstActive && (
+            <div className={`burst-status ${sending ? "sending" : detectorState}`}>
+              {sending ? "Enviando…" : DETECTOR_LABELS[detectorState]}
+            </div>
+          )}
         </div>
 
         <div className="actions">
-          <button
-            onClick={() => {
-              setCaptureError(null);
-              void capture();
-            }}
-            disabled={busy}
-          >
-            Capturar e identificar
+          {burstActive ? (
+            <button className="stop" onClick={() => void stopBurst()}>
+              ■ Terminar sesión
+            </button>
+          ) : (
+            <button onClick={() => void startBurst()}>▶ Modo ráfaga</button>
+          )}
+          <button className="secondary" onClick={() => void captureManual()} disabled={busy}>
+            {burstActive ? "Capturar ahora" : "Capturar e identificar"}
           </button>
           {source === "device" && (
             <button
@@ -200,18 +305,36 @@ export default function Scanner() {
               Cambiar cámara
             </button>
           )}
-          <UploadButton disabled={busy} onPhoto={(file) => create.mutate({ file })} />
+          {!burstActive && <UploadButton disabled={busy} onPhoto={(file) => create.mutate({ file })} />}
         </div>
+        {burstActive && (
+          <p className="muted small">
+            Empieza con la zona vacía y ve poniendo las cartas de una en una dentro del marco. Cada carta nueva se
+            identifica sola cuando la dejas quieta.
+          </p>
+        )}
         {phase === "preparing" && <p className="muted">Preparando la foto…</p>}
         {phase === "uploading" && <p className="muted">Enviando la imagen…</p>}
         {captureError && <p className="error">{captureError}</p>}
         {create.isError && <p className="error">{create.error.message}</p>}
       </section>
       <section>
-        {scan.data ? (
+        {burstId != null ? (
+          <>
+            {!burstActive && (
+              <p className="muted small">
+                Sesión terminada. <button className="link" onClick={() => setBurstId(null)}>Cerrar resumen</button>
+              </p>
+            )}
+            <BurstPanel sessionId={burstId} active={burstActive} />
+          </>
+        ) : scan.data ? (
           <ScanResult key={scan.data.id} scan={scan.data} />
         ) : (
-          <p className="muted">Coloca la carta dentro del marco y pulsa «Capturar e identificar».</p>
+          <p className="muted">
+            Coloca la carta dentro del marco y pulsa «Capturar e identificar», o usa el modo ráfaga para ir cambiando
+            cartas sin tocar la pantalla.
+          </p>
         )}
       </section>
     </div>

@@ -229,3 +229,112 @@ class KeepWarmTests(TestCase):
 
         entry = settings.CELERY_BEAT_SCHEDULE["keep-worker-warm"]
         self.assertEqual(entry["task"], "scans.tasks.keep_warm")
+
+
+
+@override_settings(MEDIA_ROOT=MEDIA, CELERY_TASK_ALWAYS_EAGER=True, AUTO_ADD_MIN_CONFIDENCE=0.72)
+class BurstModeTests(TestCase):
+    """Modo ráfaga: auto-añadido a la colección por encima del umbral."""
+
+    def setUp(self):
+        from collection.models import CollectionEntry
+
+        self.Entry = CollectionEntry
+        self.client = APIClient()
+        self.cards = []
+        for seed in range(10):
+            card = Card.objects.create(
+                bandai_id=seed + 1, card_number=f"BT1-{seed:03d}", name=f"Carta {seed}"
+            )
+            prints = fp.compute(make_card(seed))
+            CardFingerprint.objects.create(
+                card=card,
+                source_url=f"https://example.com/{seed}.png",
+                phash=prints.phash,
+                dhash=prints.dhash,
+                orb=prints.orb,
+                orb_count=prints.orb_count,
+            )
+            self.cards.append(card)
+        self.session = self.client.post("/api/sessions/", {}, format="json").data["id"]
+
+    def _scan(self, image_bytes):
+        upload = SimpleUploadedFile("frame.jpg", image_bytes, content_type="image/jpeg")
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                "/api/scans/", {"image": upload, "session": self.session}, format="multipart"
+            )
+        self.assertEqual(response.status_code, 202)
+        return self.client.get(f"/api/scans/{response.data['id']}/").data
+
+    def _card_photo(self, seed):
+        return encode_jpeg(make_photo(make_card(seed)))
+
+    def _quantity(self, card):
+        entry = self.Entry.objects.filter(card=card).first()
+        return entry.quantity if entry else 0
+
+    def _stats(self):
+        return self.client.get(f"/api/sessions/{self.session}/").data["stats"]
+
+    def test_confident_scan_is_added_and_repeats_sum(self):
+        first = self._scan(self._card_photo(4))
+        self.assertTrue(first["added_to_collection"])
+        self.assertGreaterEqual(first["confidence"], 0.72)
+        self.assertEqual(self._quantity(self.cards[4]), 1)
+        self._scan(self._card_photo(4))  # segunda copia
+        self.assertEqual(self._quantity(self.cards[4]), 2)
+        self.assertEqual(self._stats()["added"], 2)
+
+    def test_uncatalogued_goes_to_review_and_confirm_adds_it(self):
+        scan = self._scan(self._card_photo(99))
+        self.assertFalse(scan["added_to_collection"])
+        self.assertEqual(self._stats()["review"], 1)
+
+        target = self.cards[3]
+        confirmed = self.client.post(
+            f"/api/scans/{scan['id']}/confirm/", {"card_id": target.id}, format="json"
+        ).data
+        self.assertTrue(confirmed["added_to_collection"])
+        self.assertEqual(self._quantity(target), 1)
+        self.assertEqual(self._stats()["review"], 0)
+
+    def test_undo_removes_the_copy(self):
+        self._scan(self._card_photo(4))
+        second = self._scan(self._card_photo(4))
+        response = self.client.post(f"/api/scans/{second['id']}/undo/", {}, format="json")
+        self.assertTrue(response.data["dismissed"])
+        self.assertFalse(response.data["added_to_collection"])
+        self.assertEqual(self._quantity(self.cards[4]), 1)
+        first_id = self.client.get(f"/api/sessions/{self.session}/").data["scans"][-1]["id"]
+        self.client.post(f"/api/scans/{first_id}/undo/", {}, format="json")
+        self.assertEqual(self._quantity(self.cards[4]), 0)  # la entrada se borra
+
+    def test_correcting_an_added_scan_moves_the_copy(self):
+        scan = self._scan(self._card_photo(4))
+        self.client.post(f"/api/scans/{scan['id']}/confirm/", {"card_id": self.cards[6].id}, format="json")
+        self.assertEqual(self._quantity(self.cards[4]), 0)
+        self.assertEqual(self._quantity(self.cards[6]), 1)
+
+    def test_empty_frame_is_dismissed_silently(self):
+        import numpy as np
+
+        empty = np.full((720, 1280, 3), 35, np.uint8)
+        scan = self._scan(encode_jpeg(empty))
+        self.assertTrue(scan["dismissed"])
+        self.assertFalse(scan["added_to_collection"])
+        session = self.client.get(f"/api/sessions/{self.session}/").data
+        self.assertEqual(session["stats"]["total"], 0)
+        self.assertEqual(session["scans"], [])
+
+    @override_settings(AUTO_ADD_MIN_CONFIDENCE=1.01)
+    def test_threshold_is_respected(self):
+        scan = self._scan(self._card_photo(4))
+        self.assertFalse(scan["added_to_collection"])
+        self.assertEqual(self._quantity(self.cards[4]), 0)
+
+    def test_scans_outside_a_session_are_never_added(self):
+        upload = SimpleUploadedFile("f.jpg", self._card_photo(4), content_type="image/jpeg")
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post("/api/scans/", {"image": upload}, format="multipart")
+        self.assertEqual(self._quantity(self.cards[4]), 0)

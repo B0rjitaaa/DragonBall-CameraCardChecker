@@ -11,7 +11,7 @@ from vision.preprocess import decode_image, encode_jpeg
 
 from . import camera
 from .models import Scan
-from .services import run_identification, serialize_candidates, warm_up
+from .services import apply_burst_rules, run_identification, serialize_candidates, warm_up
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,7 @@ def identify_card(scan_id: int):
     scan.duration_ms = int((time.monotonic() - started) * 1000)
     scan.finished_at = timezone.now()
     scan.save()
+    apply_burst_rules(scan)
     return scan.status
 
 

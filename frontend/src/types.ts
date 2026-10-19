@@ -46,6 +46,9 @@ export interface Scan {
   confidence: number | null;
   needs_review: boolean;
   confirmed: boolean;
+  session: number | null;
+  added_to_collection: boolean;
+  dismissed: boolean;
   method: string;
   candidates: Candidate[];
   error: string;
@@ -70,3 +73,30 @@ export interface Page<T> {
 }
 
 export type Facets = Record<"set_code" | "rarity" | "card_type" | "color", string[]>;
+
+export interface SessionScan {
+  id: number;
+  status: ScanStatus;
+  cropped_image: string | null;
+  card_detected: boolean;
+  card_number: string | null;
+  card_name: string | null;
+  confidence: number | null;
+  needs_review: boolean;
+  confirmed: boolean;
+  added_to_collection: boolean;
+  dismissed: boolean;
+  error: string;
+  duration_ms: number | null;
+  created_at: string;
+}
+
+export interface ScanSession {
+  id: number;
+  started_at: string;
+  ended_at: string | null;
+  condition: string;
+  auto_add_min_confidence: number;
+  stats: { total: number; added: number; review: number; pending: number; failed: number; undone: number };
+  scans: SessionScan[];
+}

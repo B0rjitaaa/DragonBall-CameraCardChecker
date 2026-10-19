@@ -6,7 +6,7 @@ import type { Card } from "../types";
 // El texto de Bandai usa <br> como salto de línea.
 const stripHtml = (text: string) => text.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "");
 
-export default function CardDetail({ card }: { card: Card }) {
+export default function CardDetail({ card, showAddButton = true }: { card: Card; showAddButton?: boolean }) {
   const queryClient = useQueryClient();
   const add = useMutation({
     mutationFn: () => api.addToCollection(card.id),
@@ -46,9 +46,11 @@ export default function CardDetail({ card }: { card: Card }) {
             {card.image_back_url && <img src={card.image_back_url} alt={card.back_name} loading="lazy" />}
           </div>
         )}
-        <button onClick={() => add.mutate()} disabled={add.isPending}>
-          {add.isSuccess ? "Añadida ✓ (añadir otra)" : "Añadir a la colección"}
-        </button>
+        {showAddButton && (
+          <button onClick={() => add.mutate()} disabled={add.isPending}>
+            {add.isSuccess ? "Añadida ✓ (añadir otra)" : "Añadir a la colección"}
+          </button>
+        )}
         {add.isError && <p className="error">{add.error.message}</p>}
       </div>
     </article>
