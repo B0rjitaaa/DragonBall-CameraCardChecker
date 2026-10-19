@@ -13,6 +13,7 @@ function rowState(s: SessionScan): { label: string; tone: "ok" | "warn" | "muted
   if (s.status === "failed") return { label: "Error", tone: "error" };
   if (s.dismissed) return { label: "Deshecha", tone: "muted" };
   if (s.added_to_collection) return { label: "Añadida", tone: "ok" };
+  if (s.repeat_suspect) return { label: "¿Otra copia?", tone: "warn" };
   return { label: "Por revisar", tone: "warn" };
 }
 
@@ -40,6 +41,14 @@ export default function BurstPanel({ sessionId, active }: { sessionId: number; a
     queryKey: ["session", sessionId],
     queryFn: () => api.getSession(sessionId),
     refetchInterval: active ? 1000 : false,
+  });
+
+  const addCopy = useMutation({
+    mutationFn: (s: SessionScan) => api.confirmScan(s.id, s.card_id!),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
+      void queryClient.invalidateQueries({ queryKey: ["collection"] });
+    },
   });
 
   const undo = useMutation({
@@ -90,7 +99,7 @@ export default function BurstPanel({ sessionId, active }: { sessionId: number; a
       </div>
       <p className="muted small">
         Se añaden solas a la colección a partir del {percent(auto_add_min_confidence)} (1 copia, Near Mint). Por debajo
-        quedan "por revisar".
+        quedan "por revisar". Si la misma carta sale dos veces seguidas sin retirarla, se pregunta "¿Otra copia?".
       </p>
 
       {scans.length === 0 ? (
@@ -112,7 +121,12 @@ export default function BurstPanel({ sessionId, active }: { sessionId: number; a
                 </div>
                 <span className={`badge ${state.tone}`}>{state.label}</span>
                 <div className="burst-actions">
-                  {done && !s.added_to_collection && (
+                  {done && !s.added_to_collection && s.repeat_suspect && s.card_id != null && (
+                    <button disabled={addCopy.isPending} onClick={() => addCopy.mutate(s)}>
+                      Añadir copia
+                    </button>
+                  )}
+                  {done && !s.added_to_collection && !s.repeat_suspect && (
                     <button className="secondary" onClick={() => setReviewing(s.id)}>
                       Revisar
                     </button>

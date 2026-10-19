@@ -26,6 +26,8 @@ class ScanSerializer(serializers.ModelSerializer):
             "session",
             "added_to_collection",
             "dismissed",
+            "after_empty",
+            "repeat_suspect",
             "method",
             "candidates",
             "error",
@@ -33,8 +35,12 @@ class ScanSerializer(serializers.ModelSerializer):
             "created_at",
             "finished_at",
         ]
-        read_only_fields = [f for f in fields if f not in ("image", "session")]
-        extra_kwargs = {"image": {"required": False}, "session": {"required": False}}
+        read_only_fields = [f for f in fields if f not in ("image", "session", "after_empty")]
+        extra_kwargs = {
+            "image": {"required": False},
+            "session": {"required": False},
+            "after_empty": {"required": False},
+        }
 
 
 class ConfirmScanSerializer(serializers.Serializer):
@@ -44,6 +50,7 @@ class ConfirmScanSerializer(serializers.Serializer):
 class SessionScanSerializer(serializers.ModelSerializer):
     """Escaneo resumido para el panel de la sesión."""
 
+    card_id = serializers.IntegerField(source="matched_card_id", default=None)
     card_number = serializers.CharField(source="matched_card.card_number", default=None)
     card_name = serializers.CharField(source="matched_card.name", default=None)
 
@@ -54,6 +61,7 @@ class SessionScanSerializer(serializers.ModelSerializer):
             "status",
             "cropped_image",
             "card_detected",
+            "card_id",
             "card_number",
             "card_name",
             "confidence",
@@ -61,6 +69,7 @@ class SessionScanSerializer(serializers.ModelSerializer):
             "confirmed",
             "added_to_collection",
             "dismissed",
+            "repeat_suspect",
             "error",
             "duration_ms",
             "created_at",

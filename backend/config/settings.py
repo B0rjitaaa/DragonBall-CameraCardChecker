@@ -167,7 +167,8 @@ MATCH_HASH_THRESHOLD = int(env("MATCH_HASH_THRESHOLD", "20"))
 MATCH_ORB_CANDIDATES = int(env("MATCH_ORB_CANDIDATES", "8"))
 MATCH_MIN_CONFIDENCE = float(env("MATCH_MIN_CONFIDENCE", "0.55"))
 # Modo ráfaga: confianza mínima para añadir la carta a la colección sin confirmar.
-AUTO_ADD_MIN_CONFIDENCE = float(env("AUTO_ADD_MIN_CONFIDENCE", "0.72"))
+# 0,65 tras la calibración del 19/10/2026: aciertos 70–100 %, zona vacía 33–41 %.
+AUTO_ADD_MIN_CONFIDENCE = float(env("AUTO_ADD_MIN_CONFIDENCE", "0.65"))
 SCAN_RETENTION_DAYS = int(env("SCAN_RETENTION_DAYS", "30"))
 
 # --- Cámara ---

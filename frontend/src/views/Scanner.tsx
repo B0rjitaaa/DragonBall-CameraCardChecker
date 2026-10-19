@@ -121,7 +121,7 @@ export default function Scanner() {
   const [sending, setSending] = useState(false);
   const detector = useRef<ChangeDetector | null>(null);
   const inFlight = useRef(false);
-  const pendingFire = useRef(false);
+  const pendingFire = useRef<boolean | null>(null); // after_empty del disparo pendiente
 
   const chooseSource = (next: Source) => {
     setSource(next);
@@ -165,9 +165,9 @@ export default function Scanner() {
   });
 
   /** Envía el fotograma actual a la sesión de modo ráfaga (sin esperar a identificar). */
-  const sendToSession = async (session: number) => {
+  const sendToSession = async (session: number, afterEmpty = true) => {
     if (inFlight.current) {
-      pendingFire.current = true; // se cambió de carta mientras se enviaba la anterior
+      pendingFire.current = afterEmpty; // se cambió de carta mientras se enviaba la anterior
       return;
     }
     inFlight.current = true;
@@ -177,9 +177,9 @@ export default function Scanner() {
       let created;
       if (source === "device") {
         if (!videoRef.current) throw new Error("La cámara no está activa");
-        created = await api.createScan(await frameFromVideo(videoRef.current), session);
+        created = await api.createScan(await frameFromVideo(videoRef.current), session, afterEmpty);
       } else {
-        created = await api.createScan(undefined, session);
+        created = await api.createScan(undefined, session, afterEmpty);
       }
       setCaptureError(null);
       void queryClient.invalidateQueries({ queryKey: ["session", session] });
@@ -189,9 +189,10 @@ export default function Scanner() {
     } finally {
       inFlight.current = false;
       setSending(false);
-      if (pendingFire.current) {
-        pendingFire.current = false;
-        void sendToSession(session);
+      if (pendingFire.current !== null) {
+        const next = pendingFire.current;
+        pendingFire.current = null;
+        void sendToSession(session, next);
       }
     }
   };
@@ -219,7 +220,7 @@ export default function Scanner() {
       if (!d || !src) return;
       const fire = d.feed(src, performance.now());
       setDetectorState(d.state);
-      if (fire) void sendToSession(burstId);
+      if (fire) void sendToSession(burstId, d.lastFireAfterEmpty);
     }, DETECT_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, [burstActive, burstId, source]); // sendToSession solo depende de source y burstId

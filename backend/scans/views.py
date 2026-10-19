@@ -63,7 +63,8 @@ class ScanViewSet(
             scan.confirmed = True
             scan.needs_review = False
             scan.dismissed = False
-            scan.save(update_fields=["matched_card", "confirmed", "needs_review", "dismissed"])
+            scan.repeat_suspect = False  # confirmar = "sí, es otra copia"
+            scan.save(update_fields=["matched_card", "confirmed", "needs_review", "dismissed", "repeat_suspect"])
             if scan.session_id:
                 # En modo ráfaga, confirmar = añadir a la colección.
                 add_scan_to_collection(scan)

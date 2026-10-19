@@ -49,6 +49,8 @@ export interface Scan {
   session: number | null;
   added_to_collection: boolean;
   dismissed: boolean;
+  after_empty: boolean;
+  repeat_suspect: boolean;
   method: string;
   candidates: Candidate[];
   error: string;
@@ -79,6 +81,7 @@ export interface SessionScan {
   status: ScanStatus;
   cropped_image: string | null;
   card_detected: boolean;
+  card_id: number | null;
   card_number: string | null;
   card_name: string | null;
   confidence: number | null;
@@ -86,6 +89,7 @@ export interface SessionScan {
   confirmed: boolean;
   added_to_collection: boolean;
   dismissed: boolean;
+  repeat_suspect: boolean;
   error: string;
   duration_ms: number | null;
   created_at: string;

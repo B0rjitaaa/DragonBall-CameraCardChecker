@@ -52,6 +52,8 @@ function meanDiff(a: Float32Array, b: Float32Array): number {
 
 export class ChangeDetector {
   state: DetectorState = "learning";
+  /** ¿Quedó vacía la zona entre la captura anterior y la última? (ver feed) */
+  lastFireAfterEmpty = true;
   /** Últimas lecturas, útiles para ajustar los umbrales con datos reales. */
   last = { motion: 0, fromBackground: 0, fromCaptured: 0 };
 
@@ -60,6 +62,9 @@ export class ChangeDetector {
   private background: Float32Array | null = null;
   private lastCaptured: Float32Array | null = null;
   private stillSince = 0;
+  // Se vio la zona vacía (quieta) desde la última captura. Si no, y sale la
+  // misma carta, el servidor lo trata como recolocación ("¿Otra copia?").
+  private sawEmpty = true;
 
   constructor(private readonly opts: DetectorOptions = DEFAULT_DETECTOR_OPTIONS) {
     const canvas = document.createElement("canvas");
@@ -73,6 +78,7 @@ export class ChangeDetector {
     this.prev = this.background = this.lastCaptured = null;
     this.stillSince = 0;
     this.state = "learning";
+    this.sawEmpty = true;
   }
 
   /** Miniatura del último fotograma que disparó una captura. */
@@ -83,6 +89,7 @@ export class ChangeDetector {
   /** El servidor dijo que esa captura no tenía carta: es el fondo vacío real. */
   adoptBackground(thumb: Float32Array) {
     this.background = thumb;
+    this.sawEmpty = true; // esa captura era la zona vacía
   }
 
   /** Procesa un fotograma. Devuelve true si hay que capturar una carta nueva. */
@@ -133,7 +140,13 @@ export class ChangeDetector {
     this.last.fromBackground = meanDiff(cur, this.background);
     if (this.last.fromCaptured <= this.opts.change) return false; // lo mismo que antes
     this.lastCaptured = cur;
-    return this.last.fromBackground > this.opts.present; // si no, se retiró la carta
+    if (this.last.fromBackground <= this.opts.present) {
+      this.sawEmpty = true; // se retiró la carta: zona vacía
+      return false;
+    }
+    this.lastFireAfterEmpty = this.sawEmpty;
+    this.sawEmpty = false;
+    return true;
   }
 
   private luma(src: Source): Float32Array | null {

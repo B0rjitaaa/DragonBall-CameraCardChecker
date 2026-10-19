@@ -68,6 +68,11 @@ class Scan(models.Model):
     )
     # Descartado: deshecho por el usuario o disparo sin carta (zona vacía).
     dismissed = models.BooleanField(default=False)
+    # Lo envía el navegador: ¿quedó vacía la zona desde la captura anterior?
+    # Si no, y sale la misma carta que la anterior, lo más probable es que se
+    # haya recolocado la misma carta: no se añade sola ("¿Otra copia?").
+    after_empty = models.BooleanField(default=True)
+    repeat_suspect = models.BooleanField(default=False)
     method = models.CharField(max_length=8, blank=True)
     candidates = models.JSONField(default=list, blank=True)
     error = models.TextField(blank=True)

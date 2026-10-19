@@ -133,8 +133,25 @@ def apply_burst_rules(scan) -> None:
         # Disparo sobre la zona vacía (se retiró la carta): no es una carta.
         scan.dismissed = True
         scan.save(update_fields=["dismissed"])
+    elif _is_repeat(scan):
+        # Misma carta que la anterior sin haber vaciado la zona: casi seguro
+        # que se ha recolocado. Se pregunta en vez de sumar otra copia.
+        scan.repeat_suspect = True
+        scan.save(update_fields=["repeat_suspect"])
     elif confidence >= settings.AUTO_ADD_MIN_CONFIDENCE:
         add_scan_to_collection(scan)
+
+
+def _is_repeat(scan) -> bool:
+    if scan.after_empty or not scan.matched_card_id:
+        return False
+    previous = (
+        scan.session.scans.filter(created_at__lt=scan.created_at, card_detected=True, dismissed=False)
+        .exclude(pk=scan.pk)
+        .order_by("-created_at")
+        .first()
+    )
+    return previous is not None and previous.matched_card_id == scan.matched_card_id
 
 
 def serialize_candidates(result: MatchResult, limit: int = 5) -> list[dict]:

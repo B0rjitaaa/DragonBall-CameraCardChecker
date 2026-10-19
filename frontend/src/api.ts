@@ -20,11 +20,16 @@ function json(method: string, body: unknown): RequestInit {
 }
 
 export const api = {
-  createScan(image?: File, session?: number): Promise<Scan> {
-    if (!image) return request("/api/scans/", json("POST", session ? { session } : {}));
+  createScan(image?: File, session?: number, afterEmpty = true): Promise<Scan> {
+    if (!image) {
+      return request("/api/scans/", json("POST", session ? { session, after_empty: afterEmpty } : {}));
+    }
     const form = new FormData();
     form.append("image", image);
-    if (session) form.append("session", String(session));
+    if (session) {
+      form.append("session", String(session));
+      form.append("after_empty", afterEmpty ? "true" : "false");
+    }
     return request("/api/scans/", { method: "POST", body: form });
   },
   undoScan: (id: number) => request<Scan>(`/api/scans/${id}/undo/`, json("POST", {})),

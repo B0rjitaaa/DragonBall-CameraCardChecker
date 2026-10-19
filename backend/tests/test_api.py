@@ -232,9 +232,8 @@ class KeepWarmTests(TestCase):
 
 
 
-@override_settings(MEDIA_ROOT=MEDIA, CELERY_TASK_ALWAYS_EAGER=True, AUTO_ADD_MIN_CONFIDENCE=0.72)
-class BurstModeTests(TestCase):
-    """Modo ráfaga: auto-añadido a la colección por encima del umbral."""
+class BurstFixture:
+    """Catálogo sintético, una sesión y ayudantes para los tests de modo ráfaga."""
 
     def setUp(self):
         from collection.models import CollectionEntry
@@ -258,12 +257,11 @@ class BurstModeTests(TestCase):
             self.cards.append(card)
         self.session = self.client.post("/api/sessions/", {}, format="json").data["id"]
 
-    def _scan(self, image_bytes):
+    def _scan(self, image_bytes, after_empty=True):
         upload = SimpleUploadedFile("frame.jpg", image_bytes, content_type="image/jpeg")
+        data = {"image": upload, "session": self.session, "after_empty": "true" if after_empty else "false"}
         with self.captureOnCommitCallbacks(execute=True):
-            response = self.client.post(
-                "/api/scans/", {"image": upload, "session": self.session}, format="multipart"
-            )
+            response = self.client.post("/api/scans/", data, format="multipart")
         self.assertEqual(response.status_code, 202)
         return self.client.get(f"/api/scans/{response.data['id']}/").data
 
@@ -276,6 +274,12 @@ class BurstModeTests(TestCase):
 
     def _stats(self):
         return self.client.get(f"/api/sessions/{self.session}/").data["stats"]
+
+
+
+@override_settings(MEDIA_ROOT=MEDIA, CELERY_TASK_ALWAYS_EAGER=True, AUTO_ADD_MIN_CONFIDENCE=0.72)
+class BurstModeTests(BurstFixture, TestCase):
+    """Modo ráfaga: auto-añadido a la colección por encima del umbral."""
 
     def test_confident_scan_is_added_and_repeats_sum(self):
         first = self._scan(self._card_photo(4))
@@ -338,3 +342,44 @@ class BurstModeTests(TestCase):
         with self.captureOnCommitCallbacks(execute=True):
             self.client.post("/api/scans/", {"image": upload}, format="multipart")
         self.assertEqual(self._quantity(self.cards[4]), 0)
+
+
+
+@override_settings(MEDIA_ROOT=MEDIA, CELERY_TASK_ALWAYS_EAGER=True, AUTO_ADD_MIN_CONFIDENCE=0.65)
+class RepeatGuardTests(BurstFixture, TestCase):
+    """Misma carta dos veces seguidas sin vaciar la zona → "¿Otra copia?"."""
+
+    def test_recolocated_card_is_not_added(self):
+        self._scan(self._card_photo(4))
+        repeat = self._scan(self._card_photo(4), after_empty=False)
+        self.assertTrue(repeat["repeat_suspect"])
+        self.assertFalse(repeat["added_to_collection"])
+        self.assertEqual(self._quantity(self.cards[4]), 1)
+        self.assertEqual(self._stats()["review"], 1)
+
+    def test_confirming_the_repeat_adds_another_copy(self):
+        self._scan(self._card_photo(4))
+        repeat = self._scan(self._card_photo(4), after_empty=False)
+        data = self.client.post(
+            f"/api/scans/{repeat['id']}/confirm/", {"card_id": self.cards[4].id}, format="json"
+        ).data
+        self.assertTrue(data["added_to_collection"])
+        self.assertFalse(data["repeat_suspect"])
+        self.assertEqual(self._quantity(self.cards[4]), 2)
+
+    def test_two_copies_with_empty_zone_between_are_added(self):
+        self._scan(self._card_photo(4))
+        self._scan(self._card_photo(4), after_empty=True)
+        self.assertEqual(self._quantity(self.cards[4]), 2)
+
+    def test_swapping_for_a_different_card_is_added(self):
+        self._scan(self._card_photo(4))
+        other = self._scan(self._card_photo(6), after_empty=False)
+        self.assertTrue(other["added_to_collection"])
+        self.assertFalse(other["repeat_suspect"])
+
+    def test_previous_undone_does_not_block(self):
+        first = self._scan(self._card_photo(4))
+        self.client.post(f"/api/scans/{first['id']}/undo/", {}, format="json")
+        again = self._scan(self._card_photo(4), after_empty=False)
+        self.assertTrue(again["added_to_collection"])
