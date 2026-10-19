@@ -98,6 +98,7 @@ function UploadButton({ disabled, onPhoto }: { disabled: boolean; onPhoto: (file
 }
 
 const DETECTOR_LABELS: Record<DetectorState, string> = {
+  learning: "Aprendiendo el fondo: deja la zona vacía…",
   idle: "Esperando carta…",
   moving: "Movimiento: deja la carta quieta",
   settling: "Carta quieta…",
@@ -172,14 +173,17 @@ export default function Scanner() {
     inFlight.current = true;
     setSending(true);
     try {
+      const thumb = detector.current?.snapshot() ?? null;
+      let created;
       if (source === "device") {
         if (!videoRef.current) throw new Error("La cámara no está activa");
-        await api.createScan(await frameFromVideo(videoRef.current), session);
+        created = await api.createScan(await frameFromVideo(videoRef.current), session);
       } else {
-        await api.createScan(undefined, session);
+        created = await api.createScan(undefined, session);
       }
       setCaptureError(null);
       void queryClient.invalidateQueries({ queryKey: ["session", session] });
+      if (thumb) void learnFromEmpty(created.id, thumb);
     } catch (err) {
       setCaptureError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -189,6 +193,19 @@ export default function Scanner() {
         pendingFire.current = false;
         void sendToSession(session);
       }
+    }
+  };
+
+  /** Si el servidor dice que esa captura no tenía carta, corrige el fondo del detector. */
+  const learnFromEmpty = async (id: number, thumb: Float32Array) => {
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 300));
+      const s = await api.getScan(id).catch(() => null);
+      if (!s || s.status === "pending" || s.status === "processing") continue;
+      if (s.status === "done" && !s.card_detected && (s.confidence ?? 0) < 0.55) {
+        detector.current?.adoptBackground(thumb);
+      }
+      return;
     }
   };
 
@@ -309,8 +326,8 @@ export default function Scanner() {
         </div>
         {burstActive && (
           <p className="muted small">
-            Empieza con la zona vacía y ve poniendo las cartas de una en una dentro del marco. Cada carta nueva se
-            identifica sola cuando la dejas quieta.
+            Empieza con la zona vacía (el fondo se aprende en 1 s) y ve poniendo las cartas de una en una dentro del
+            marco. Cada carta nueva se identifica sola cuando la dejas quieta.
           </p>
         )}
         {phase === "preparing" && <p className="muted">Preparando la foto…</p>}

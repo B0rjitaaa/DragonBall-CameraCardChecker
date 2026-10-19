@@ -264,6 +264,10 @@ select {
   pointer-events: none;
 }
 
+.burst-status.learning {
+  background: rgb(29 78 216 / 0.85);
+}
+
 .burst-status.moving {
   background: rgb(180 83 9 / 0.85);
 }

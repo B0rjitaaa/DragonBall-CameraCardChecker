@@ -10,9 +10,14 @@
 // Si la imagen quieta vuelve a parecerse al fondo, es que se retiró la carta:
 // no dispara, pero la siguiente carta (aunque sea la misma) volverá a contar.
 //
-// El fondo es el primer fotograma tras reset(): la sesión debe empezar con la
-// zona de escaneo vacía. Si empieza con una carta puesta, esa primera carta no
-// se captura sola (se puede capturar a mano); las siguientes sí.
+// Fondo vacío: se aprende tras reset() cuando la imagen lleva `backgroundMs`
+// quieta (no del primer fotograma: al pulsar "Empezar" en el móvil, el
+// soporte se mueve o sale la mano y el fondo quedaba mal, con lo que cada vez
+// que se retiraba una carta se disparaba sobre la zona vacía). Si aun así se
+// dispara en vacío, el servidor lo detecta y adoptBackground() corrige el
+// fondo con ese fotograma.
+// Si la sesión empieza con una carta puesta, esa primera carta no se captura
+// sola (se puede capturar a mano); las siguientes sí.
 
 const W = 64;
 const H = 48;
@@ -23,6 +28,7 @@ export interface DetectorOptions {
   stableMs: number;
   change: number;
   present: number;
+  backgroundMs: number;
 }
 
 export const DEFAULT_DETECTOR_OPTIONS: DetectorOptions = {
@@ -31,9 +37,10 @@ export const DEFAULT_DETECTOR_OPTIONS: DetectorOptions = {
   stableMs: 700,
   change: 10,
   present: 10,
+  backgroundMs: 1000,
 };
 
-export type DetectorState = "idle" | "moving" | "settling";
+export type DetectorState = "learning" | "idle" | "moving" | "settling";
 
 type Source = HTMLVideoElement | HTMLImageElement;
 
@@ -44,7 +51,7 @@ function meanDiff(a: Float32Array, b: Float32Array): number {
 }
 
 export class ChangeDetector {
-  state: DetectorState = "idle";
+  state: DetectorState = "learning";
   /** Últimas lecturas, útiles para ajustar los umbrales con datos reales. */
   last = { motion: 0, fromBackground: 0, fromCaptured: 0 };
 
@@ -65,21 +72,44 @@ export class ChangeDetector {
   reset() {
     this.prev = this.background = this.lastCaptured = null;
     this.stillSince = 0;
-    this.state = "idle";
+    this.state = "learning";
+  }
+
+  /** Miniatura del último fotograma que disparó una captura. */
+  snapshot(): Float32Array | null {
+    return this.lastCaptured;
+  }
+
+  /** El servidor dijo que esa captura no tenía carta: es el fondo vacío real. */
+  adoptBackground(thumb: Float32Array) {
+    this.background = thumb;
   }
 
   /** Procesa un fotograma. Devuelve true si hay que capturar una carta nueva. */
   feed(src: Source, now: number): boolean {
     const cur = this.luma(src);
     if (!cur) return false;
-    if (!this.background || !this.prev || !this.lastCaptured) {
-      this.background = this.prev = this.lastCaptured = cur;
+    if (!this.prev) {
+      this.prev = cur;
       return false;
     }
-
     const motion = meanDiff(cur, this.prev);
     this.prev = cur;
     this.last.motion = motion;
+
+    if (!this.background || !this.lastCaptured) {
+      // Aprendiendo el fondo: esperar a que la imagen esté quieta un rato.
+      if (motion > this.opts.still) {
+        this.stillSince = 0;
+      } else if (!this.stillSince) {
+        this.stillSince = now;
+      } else if (now - this.stillSince >= this.opts.backgroundMs) {
+        this.background = this.lastCaptured = cur;
+        this.stillSince = 0;
+        this.state = "idle";
+      }
+      return false;
+    }
     if (motion > this.opts.motion) {
       this.state = "moving";
       this.stillSince = 0;
