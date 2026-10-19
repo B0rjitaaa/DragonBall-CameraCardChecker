@@ -55,3 +55,22 @@ export async function preparePhoto(file: File): Promise<File> {
   if (!blob) return file;
   return new File([blob], "foto.jpg", { type: "image/jpeg" });
 }
+
+/** Captura el fotograma actual de un <video> como JPEG (lado mayor ≤ MAX_SIDE). */
+export async function frameFromVideo(video: HTMLVideoElement): Promise<File> {
+  const width = video.videoWidth;
+  const height = video.videoHeight;
+  if (!width || !height) throw new Error("La cámara todavía no da imagen");
+  const scale = Math.min(1, MAX_SIDE / Math.max(width, height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(width * scale);
+  canvas.height = Math.round(height * scale);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("No se pudo capturar la imagen");
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY),
+  );
+  if (!blob) throw new Error("No se pudo capturar la imagen");
+  return new File([blob], "captura.jpg", { type: "image/jpeg" });
+}

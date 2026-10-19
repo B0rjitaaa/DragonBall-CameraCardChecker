@@ -103,6 +103,7 @@ button:disabled {
   cursor: default;
 }
 
+button.secondary,
 .button.secondary,
 .pager button,
 .qty button {
@@ -172,21 +173,65 @@ select {
   pointer-events: none;
 }
 
-.webcam-section {
-  margin-top: 16px;
+.source-switch {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 10px 12px;
   background: var(--surface);
 }
 
-.webcam-section summary {
-  cursor: pointer;
-  color: var(--muted);
+.source-switch button {
+  flex: 1 1 0;
+  justify-content: center;
+  background: transparent;
+  color: var(--text);
+  border-color: transparent;
+  padding: 8px 10px;
+  font-size: 0.9rem;
 }
 
-.webcam-section[open] summary {
-  margin-bottom: 10px;
+.source-switch button.active {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+/* Imagen en directo (vídeo o webcam) con la guía de la carta encima. */
+.camera-frame {
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+.camera-frame .preview {
+  width: 100%;
+}
+
+/* El vídeo del dispositivo usa su propia proporción (el iPhone en vertical da
+   un vídeo alto); limitado para que los botones queden a la vista. */
+.camera-frame video.preview {
+  aspect-ratio: auto;
+  max-height: 70vh;
+  background: #000;
+}
+
+.card-guide {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  height: 78%;
+  aspect-ratio: 63 / 88;
+  transform: translate(-50%, -50%);
+  border: 2px dashed rgb(255 255 255 / 0.75);
+  border-radius: 10px;
+  box-shadow: 0 0 0 9999px rgb(0 0 0 / 0.18);
+  pointer-events: none;
+}
+
+.camera-frame:has(.placeholder) .card-guide {
+  display: none;
 }
 
 /* Móvil: botones a todo el ancho y fáciles de pulsar. */
