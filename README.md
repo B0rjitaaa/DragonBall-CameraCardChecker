@@ -79,6 +79,20 @@ El hook `post-merge` ejecuta `scripts/deploy.sh`, que:
 
 Para saltarse el hook puntualmente: `SKIP_DEPLOY_HOOK=1 git pull`. Para forzar una reconstrucción completa: `FORCE=1 make deploy`.
 
+### HTTPS en la red local (cámara del móvil)
+
+Los navegadores del móvil solo dejan usar la cámara en directo desde páginas HTTPS. Para tenerlo sin dominio ni servicios externos, el servidor crea su propia autoridad de certificación (CA):
+
+```bash
+scripts/local-https.sh 192.168.178.104 pcmint-OptiPlex-3020M.local   # IP y nombres del servidor
+```
+
+- Genera en `certs/` la CA (una sola vez) y el certificado del servidor, y reinicia el frontend: queda `https://<ip>` en el puerto `HTTPS_PORT` (443). El HTTP normal sigue funcionando.
+- Sin certificados en `certs/` (Mac, Pi), Nginx arranca solo con HTTP.
+- Añade las variantes `https://…` a `DJANGO_CSRF_TRUSTED_ORIGINS` en el `.env` (las necesita el admin).
+- Instala la CA en cada dispositivo desde `http://<ip>/ca.crt`. En el iPhone: abrir la URL en Safari → Ajustes → **Perfil descargado** → Instalar, y después Ajustes → General → Información → **Confianza de certificados** → activar "DBS Card Identifier CA".
+- La CA solo puede firmar para IPs privadas y nombres `.local`, y `certs/ca.key` no sale del servidor (está en `.gitignore`).
+
 ### Cámara
 
 - Se puede desconectar y reconectar la webcam en caliente: el servicio reintenta cada 3 s. Mientras no hay cámara, los escaneos fallan con "La cámara no está disponible".

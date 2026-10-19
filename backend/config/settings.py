@@ -22,6 +22,9 @@ SECRET_KEY = env("DJANGO_SECRET_KEY", "dev-insecure-key")
 DEBUG = env_bool("DJANGO_DEBUG", False)
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "*")
 CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
+# Nginx indica si la petición llegó por HTTPS: así las URLs absolutas (fotos de
+# los escaneos) salen con https:// y Safari no las bloquea por contenido mixto.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 INSTALLED_APPS = [
     "django.contrib.admin",

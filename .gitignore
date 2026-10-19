@@ -1,4 +1,6 @@
 .env
+certs/*
+!certs/.gitkeep
 __pycache__/
 *.pyc
 backend/media/

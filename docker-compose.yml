@@ -98,8 +98,11 @@ services:
     restart: unless-stopped
     ports:
       - "${HTTP_PORT:-80}:80"
+      # HTTPS solo se activa si hay certificados en ./certs (scripts/local-https.sh).
+      - "${HTTPS_PORT:-443}:443"
     volumes:
       - media:/srv/media:ro
+      - ./certs:/etc/nginx/certs:ro
     depends_on:
       backend:
         condition: service_healthy
