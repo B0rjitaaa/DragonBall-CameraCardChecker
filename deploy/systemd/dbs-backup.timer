@@ -1,0 +1,11 @@
+[Unit]
+Description=Copia de seguridad diaria (03:30)
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+# Si el equipo estaba apagado a esa hora, se hace al encenderlo.
+Persistent=true
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target

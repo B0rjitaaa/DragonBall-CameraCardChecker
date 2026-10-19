@@ -1,16 +1,14 @@
 from celery import shared_task
 
-from . import bandai
+from .catalog_sync import run_sync
 from .fingerprints import build_pending
-from .importer import upsert_cards
 
 
 @shared_task
-def sync_bandai_catalog():
-    stats = upsert_cards(bandai.fetch_cards())
-    if stats.created or stats.updated:
-        build_fingerprints.delay()
-    return str(stats)
+def sync_catalog(full: bool = False):
+    """Trae del catálogo de EnhancedAPI las cartas nuevas o cambiadas."""
+    sync = run_sync(full=full)
+    return {"status": sync.status, "created": sync.created, "updated": sync.updated, "error": sync.error}
 
 
 @shared_task

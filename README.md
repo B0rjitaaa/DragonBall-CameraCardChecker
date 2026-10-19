@@ -47,6 +47,41 @@ make catalog        # = make import images fingerprints
 
 `data/` está montado en los contenedores. `data/card_images/` no está en git: si la copias a la Pi, no hace falta volver a descargar las imágenes.
 
+## Sincronización del catálogo
+
+El catálogo se mantiene al día desde **DragonBall-EnhancedAPI**, que es quien sincroniza con Bandai TCG+ (a las 04:00). A diario a las 05:30 (`CATALOG_SYNC_HOUR`), el worker pide a `ENHANCED_API_URL/api/cards/export/?updated_since=…` solo las cartas nuevas o cambiadas, las importa y calcula sus fingerprints, descargando sus imágenes.
+
+```bash
+make sync          # ahora (solo lo nuevo)
+make sync FULL=1   # catálogo completo
+```
+
+Cada sincronización queda registrada en el admin, en **Catalog syncs**.
+
+## Copias de seguridad
+
+`scripts/backup.sh` copia las bases de datos de este proyecto y de DragonBall-EnhancedAPI (`pg_dump`, verificadas con `pg_restore -l`) y los volúmenes de datos (las fotos de los escaneos):
+
+- Se guardan en `~/backups/dbs/daily/<fecha>/`, con 7 diarias y 4 semanales (los domingos, en `weekly/`).
+- Si se define `BACKUP_REMOTE` en `~/.config/dbs-backup.env`, también se copian a otro equipo con `rsync`.
+
+```bash
+make install-backups   # en el servidor, una vez: temporizador diario a las 03:30 (systemd)
+make backup            # copia ahora
+journalctl -t dbs-backup --since today
+```
+
+**Restaurar** (con el proyecto parado salvo la base de datos):
+
+```bash
+docker compose stop backend worker
+docker compose exec -T db dropdb -U dbs dbs && docker compose exec -T db createdb -U dbs dbs
+docker compose exec -T db pg_restore -U dbs -d dbs --no-owner < ~/backups/dbs/daily/<fecha>/DragonBall-CameraCardChecker.dump
+docker run --rm -v dragonball-cardcameraapp_media:/data -v ~/backups/dbs/daily/<fecha>:/b:ro alpine \
+    sh -c "rm -rf /data/* && tar xzf /b/DragonBall-CameraCardChecker-media.tgz -C /data"
+docker compose up -d
+```
+
 ## Raspberry Pi 3 B+
 
 ### Instalación (una vez)
@@ -64,7 +99,7 @@ cp .env.example .env    # descomenta COMPOSE_PROFILES=camera y revisa DJANGO_SEC
                         # DJANGO_ALLOWED_HOSTS y DJANGO_CSRF_TRUSTED_ORIGINS
 make hooks              # cada `git pull` en main despliega solo
 make up
-make catalog            # o restaura un pg_dump de cards_card + cards_cardfingerprint (más rápido)
+make catalog            # o restaura una copia de seguridad (más rápido)
 ```
 
 ### Flujo de trabajo

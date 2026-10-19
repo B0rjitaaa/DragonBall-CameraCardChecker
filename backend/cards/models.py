@@ -33,6 +33,35 @@ class Card(models.Model):
         return f"{self.card_number} {self.name}"
 
 
+class CatalogSync(models.Model):
+    """Una sincronización del catálogo desde DragonBall-EnhancedAPI."""
+
+    class Status(models.TextChoices):
+        RUNNING = "running", "En curso"
+        SUCCESS = "success", "Correcta"
+        FAILED = "failed", "Error"
+
+    started_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=8, choices=Status.choices, default=Status.RUNNING)
+    full = models.BooleanField(default=False)
+    # Marca de tiempo de EnhancedAPI (generated_at): la siguiente sincronización
+    # pide solo lo cambiado desde aquí (sin depender del reloj de este equipo).
+    cursor = models.DateTimeField(null=True, blank=True)
+    fetched = models.PositiveIntegerField(default=0)
+    created = models.PositiveIntegerField(default=0)
+    updated = models.PositiveIntegerField(default=0)
+    fingerprints = models.PositiveIntegerField(default=0)
+    fingerprint_errors = models.PositiveIntegerField(default=0)
+    error = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-started_at"]
+
+    def __str__(self):
+        return f"Sync {self.started_at:%Y-%m-%d %H:%M} ({self.status})"
+
+
 class CardFingerprint(models.Model):
     class Face(models.TextChoices):
         FRONT = "front", "Anverso"

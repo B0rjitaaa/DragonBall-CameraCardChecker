@@ -400,3 +400,51 @@ class CollectionExportTests(TestCase):
         self.assertEqual(
             data[0], {"bandai_id": 4, "card_number": "BT1-001", "name": "Champa", "quantity": 2, "condition": "near_mint"}
         )
+
+
+
+@override_settings(ENHANCED_API_URL="http://enhanced:5173")
+class CatalogSyncTests(TestCase):
+    def _export(self, records, generated_at="2026-10-19T10:00:00+00:00"):
+        response = mock.Mock()
+        response.json.return_value = {"generated_at": generated_at, "count": len(records), "results": records}
+        response.raise_for_status.return_value = None
+        return response
+
+    def test_first_sync_is_full_and_next_is_incremental(self):
+        from cards.catalog_sync import run_sync
+        from cards.models import CatalogSync
+
+        with mock.patch("cards.catalog_sync.requests.get", return_value=self._export([BANDAI_LEADER])) as get, \
+                mock.patch("cards.catalog_sync.build_pending", return_value=(2, 0)):
+            first = run_sync()
+        self.assertEqual(get.call_args.kwargs["params"], {})  # primera vez: completo
+        self.assertEqual(get.call_args.args[0], "http://enhanced:5173/api/cards/export/")
+        self.assertEqual((first.status, first.full, first.created, first.fingerprints), ("success", True, 1, 2))
+        self.assertTrue(Card.objects.filter(bandai_id=4).exists())
+
+        renamed = {**BANDAI_LEADER, "card_name": "Champa!"}
+        with mock.patch("cards.catalog_sync.requests.get", return_value=self._export([renamed])) as get, \
+                mock.patch("cards.catalog_sync.build_pending", return_value=(0, 0)):
+            second = run_sync()
+        self.assertEqual(get.call_args.kwargs["params"], {"updated_since": "2026-10-19T10:00:00+00:00"})
+        self.assertEqual((second.full, second.created, second.updated), (False, 0, 1))
+        self.assertEqual(Card.objects.get(bandai_id=4).name, "Champa!")
+        self.assertEqual(CatalogSync.objects.count(), 2)
+
+    def test_failure_is_recorded_and_does_not_move_the_cursor(self):
+        import requests
+
+        from cards.catalog_sync import run_sync
+
+        with mock.patch("cards.catalog_sync.requests.get", side_effect=requests.ConnectionError("caído")):
+            sync = run_sync()
+        self.assertEqual(sync.status, "failed")
+        self.assertIn("caído", sync.error)
+        self.assertIsNone(sync.cursor)
+
+    @override_settings(ENHANCED_API_URL="")
+    def test_not_configured(self):
+        from cards.catalog_sync import run_sync
+
+        self.assertIn("ENHANCED_API_URL", run_sync().error)

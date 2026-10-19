@@ -13,12 +13,8 @@ Cada registro es el detalle de una carta tal y como lo devuelve la API:
 import logging
 import re
 
-import requests
-from django.conf import settings
-
 logger = logging.getLogger(__name__)
 
-_TIMEOUT = 30
 _SET_CODE_RE = re.compile(r"^([A-Z]+\d*)-")
 
 # card_config -> campo de Card. El resto de entradas va a `attributes`.
@@ -95,31 +91,3 @@ def extract_items(payload) -> list:
                 return nested
     return []
 
-
-def fetch_cards():
-    """Recorre el endpoint paginado de Bandai y produce registros en bruto.
-
-    PENDIENTE: la API real requiere listado + detalle por carta y tiene WAF
-    (ver dbs_cards_downloader.py en DragonBallTCG - EnhancedAPI). De momento la
-    fuente fiable es `import_cards data/cartas_dbs.json`.
-    """
-    url = settings.BANDAI_API_URL
-    if not url:
-        raise RuntimeError("BANDAI_API_URL no está configurado")
-
-    page_size = settings.BANDAI_PAGE_SIZE
-    offset = 0
-    session = requests.Session()
-    session.headers["User-Agent"] = "dbs-card-identifier/1.0"
-    while True:
-        params = {"limit": page_size, "offset": offset}
-        if settings.BANDAI_GAME_TITLE_ID:
-            params["game_title_id"] = settings.BANDAI_GAME_TITLE_ID
-        response = session.get(url, params=params, timeout=_TIMEOUT)
-        response.raise_for_status()
-        items = extract_items(response.json())
-        logger.info("Bandai: offset=%s -> %s cartas", offset, len(items))
-        yield from items
-        if len(items) < page_size:
-            break
-        offset += page_size

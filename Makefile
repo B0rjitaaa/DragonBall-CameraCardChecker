@@ -4,7 +4,7 @@ COMPOSE ?= docker compose
 PI ?= raspi-j4r3tz@192.168.178.83
 PI_DIR ?= Development/DragonBall-CameraCardChecker
 
-.PHONY: env up down logs ps build test shell superuser migrate deploy hooks \
+.PHONY: env up down logs ps build test shell superuser migrate deploy hooks backup install-backups \
 	import images fingerprints catalog sync pi-deploy pi-logs
 
 env:
@@ -45,6 +45,18 @@ hooks:           ## Activa el hook: cada `git pull` en main ejecuta scripts/depl
 	git config core.hooksPath .githooks
 	@echo "Hook post-merge activado en este clon."
 
+# --- Copias de seguridad (en el servidor) ---
+backup:          ## Copia de seguridad ahora (BD de los dos proyectos + fotos)
+	bash scripts/backup.sh
+
+install-backups: ## Instala el temporizador diario de copias (03:30). Pide sudo
+	sed -e "s|@USER@|$(USER)|g" -e "s|@DIR@|$(CURDIR)|g" deploy/systemd/dbs-backup.service \
+		| sudo tee /etc/systemd/system/dbs-backup.service >/dev/null
+	sudo cp deploy/systemd/dbs-backup.timer /etc/systemd/system/dbs-backup.timer
+	sudo systemctl daemon-reload
+	sudo systemctl enable --now dbs-backup.timer
+	systemctl list-timers dbs-backup.timer --no-pager
+
 # --- Atajos desde el Mac ---
 pi-deploy:       ## Hace `git pull` en la Pi (el hook despliega). Antes: commit + push a main
 	ssh $(PI) 'cd $(PI_DIR) && git pull --ff-only'
@@ -66,5 +78,5 @@ fingerprints:    ## Calcula los fingerprints pendientes
 
 catalog: import images fingerprints   ## Todo el catálogo desde cero
 
-sync:            ## Sincroniza con Bandai (PENDIENTE: ver cards/bandai.py)
-	$(COMPOSE) exec backend python manage.py sync_cards
+sync:            ## Trae de EnhancedAPI las cartas nuevas o cambiadas (FULL=1: todo)
+	$(COMPOSE) exec backend python manage.py sync_catalog $(if $(FULL),--full,)

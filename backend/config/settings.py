@@ -132,9 +132,10 @@ CELERY_RESULT_EXPIRES = 3600
 # Cada cuántos segundos se "toca" el pipeline para que no acabe en swap (0 = nunca).
 KEEP_WARM_SECONDS = int(env("KEEP_WARM_SECONDS", "60"))
 CELERY_BEAT_SCHEDULE = {
-    "sync-bandai-catalog": {
-        "task": "cards.tasks.sync_bandai_catalog",
-        "schedule": crontab(hour=int(env("BANDAI_SYNC_HOUR", "4")), minute=0),
+    # Después del sync diario de EnhancedAPI con Bandai (04:00).
+    "sync-catalog": {
+        "task": "cards.tasks.sync_catalog",
+        "schedule": crontab(hour=int(env("CATALOG_SYNC_HOUR", "5")), minute=30),
     },
     **(
         {
@@ -154,10 +155,8 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
-# --- Catálogo Bandai ---
-BANDAI_API_URL = env("BANDAI_API_URL", "")
-BANDAI_GAME_TITLE_ID = env("BANDAI_GAME_TITLE_ID", "")
-BANDAI_PAGE_SIZE = int(env("BANDAI_PAGE_SIZE", "100"))
+# --- Catálogo: se sincroniza desde DragonBall-EnhancedAPI (cards/catalog_sync.py) ---
+ENHANCED_API_URL = env("ENHANCED_API_URL", "")
 
 # Caché local de imágenes oficiales (volumen ./data, ver cards/images.py).
 CARD_IMAGES_DIR = env("CARD_IMAGES_DIR", str(BASE_DIR / "data" / "card_images"))

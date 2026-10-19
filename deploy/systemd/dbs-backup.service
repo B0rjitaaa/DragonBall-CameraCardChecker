@@ -1,0 +1,9 @@
+[Unit]
+Description=Copia de seguridad de DBS Card Identifier y DragonBall-EnhancedAPI
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=@USER@
+ExecStart=@DIR@/scripts/backup.sh
