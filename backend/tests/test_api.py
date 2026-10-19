@@ -448,3 +448,41 @@ class CatalogSyncTests(TestCase):
         from cards.catalog_sync import run_sync
 
         self.assertIn("ENHANCED_API_URL", run_sync().error)
+
+
+
+class CollectionAdjustTests(TestCase):
+    def setUp(self):
+        from collection.models import CollectionEntry
+
+        self.Entry = CollectionEntry
+        self.card = Card.objects.create(bandai_id=4, card_number="BT1-001", name="Champa")
+        self.client = APIClient()
+
+    def adjust(self, **body):
+        return self.client.post("/api/collection/adjust/", {"bandai_id": 4, **body}, format="json")
+
+    def test_add_creates_and_sums_near_mint(self):
+        self.assertEqual(self.adjust(delta=1).data["quantity"], 1)
+        data = self.adjust(delta=2).data
+        self.assertEqual((data["quantity"], data["conditions"]), (3, {"near_mint": 3}))
+
+    def test_remove_prefers_near_mint_then_largest(self):
+        self.Entry.objects.create(card=self.card, condition="near_mint", quantity=1)
+        self.Entry.objects.create(card=self.card, condition="played", quantity=2)
+        data = self.adjust(delta=-2).data
+        self.assertEqual(data["conditions"], {"played": 1})  # se fue la NM y una Played
+
+    def test_last_copy_removes_the_entry(self):
+        self.adjust(delta=1)
+        data = self.adjust(delta=-1).data
+        self.assertEqual((data["quantity"], data["conditions"]), (0, {}))
+        self.assertFalse(self.Entry.objects.exists())
+
+    def test_remove_from_empty_is_harmless(self):
+        self.assertEqual(self.adjust(delta=-1).data["quantity"], 0)
+
+    def test_validation(self):
+        self.assertEqual(self.adjust(delta=0).status_code, 400)
+        response = self.client.post("/api/collection/adjust/", {"bandai_id": 999, "delta": 1}, format="json")
+        self.assertEqual(response.status_code, 404)

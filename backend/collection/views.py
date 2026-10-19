@@ -1,11 +1,14 @@
 from django.db import transaction
 from django.db.models import F
+from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from .models import CollectionEntry
-from .serializers import CollectionEntrySerializer
+from cards.models import Card
+
+from .serializers import AdjustSerializer, CollectionEntrySerializer
 
 
 class CollectionEntryViewSet(viewsets.ModelViewSet):
@@ -56,4 +59,52 @@ class CollectionEntryViewSet(viewsets.ModelViewSet):
                 }
                 for bandai_id, number, name, quantity, condition in rows
             ]
+        )
+
+    @action(detail=False, methods=["post"])
+    def adjust(self, request):
+        """Suma o resta copias de una carta: {bandai_id, delta, condition?}.
+
+        Lo usa "Mi colección" de DragonBall-EnhancedAPI (botones − / +). Al
+        sumar, las copias entran en `condition` (Near Mint por defecto). Al
+        restar, se quitan de `condition` si se indica; si no, primero de Near
+        Mint y después del estado con más copias. Una entrada a 0 se borra.
+        """
+        body = AdjustSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        card = get_object_or_404(Card, bandai_id=data["bandai_id"])
+        delta = data["delta"]
+
+        with transaction.atomic():
+            if delta > 0:
+                condition = data.get("condition", CollectionEntry.Condition.NEAR_MINT)
+                entry, created = CollectionEntry.objects.select_for_update().get_or_create(
+                    card=card, condition=condition, defaults={"quantity": delta}
+                )
+                if not created:
+                    CollectionEntry.objects.filter(pk=entry.pk).update(quantity=F("quantity") + delta)
+            else:
+                entries = list(CollectionEntry.objects.select_for_update().filter(card=card))
+                if "condition" in data:
+                    entries = [e for e in entries if e.condition == data["condition"]]
+                entries.sort(
+                    key=lambda e: (e.condition != CollectionEntry.Condition.NEAR_MINT, -e.quantity)
+                )
+                remaining = -delta
+                for entry in entries:
+                    if remaining == 0:
+                        break
+                    take = min(entry.quantity, remaining)
+                    remaining -= take
+                    if take == entry.quantity:
+                        entry.delete()
+                    else:
+                        CollectionEntry.objects.filter(pk=entry.pk).update(quantity=F("quantity") - take)
+
+        conditions = dict(
+            CollectionEntry.objects.filter(card=card).values_list("condition", "quantity")
+        )
+        return Response(
+            {"bandai_id": card.bandai_id, "quantity": sum(conditions.values()), "conditions": conditions}
         )
