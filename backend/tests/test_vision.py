@@ -2,9 +2,9 @@ from django.test import SimpleTestCase
 
 from vision import fingerprint as fp
 from vision.matcher import FingerprintIndex, identify
-from vision.preprocess import CARD_H, CARD_W, extract_card
+from vision.preprocess import CARD_H, CARD_W, extract_card, find_card_quad, order_points
 
-from .synthetic import make_card, make_photo
+from .synthetic import make_card, make_photo, make_stand_photo
 
 
 def build_index(cards):
@@ -20,6 +20,18 @@ class PreprocessTests(SimpleTestCase):
         crop, detected = extract_card(make_photo(make_card(1)))
         self.assertTrue(detected)
         self.assertEqual(crop.shape[:2], (CARD_H, CARD_W))
+
+
+    def test_card_on_a_stand_over_a_dark_backdrop(self):
+        # Montaje del modo ráfaga: carta apoyada en un soporte blanco delante de
+        # un fondo oscuro que se sale del encuadre. El detector antiguo cogía el
+        # fondo oscuro (más grande) en vez de la carta.
+        import numpy as np
+
+        photo, corners = make_stand_photo(make_card(3))
+        quad = find_card_quad(photo)
+        self.assertIsNotNone(quad)
+        self.assertLess(np.abs(order_points(quad) - corners).max(), 15)
 
 
 class FingerprintTests(SimpleTestCase):

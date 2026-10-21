@@ -37,3 +37,20 @@ def make_photo(card: np.ndarray, rotate_180: bool = False) -> np.ndarray:
     photo = cv2.convertScaleAbs(photo, alpha=0.9, beta=15)
     noise = np.random.default_rng(0).normal(0, 4, photo.shape)
     return np.clip(photo.astype(np.float32) + noise, 0, 255).astype(np.uint8)
+
+
+def make_stand_photo(card: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Carta apoyada en un soporte blanco delante de un fondo oscuro que llega
+    al borde de la foto. Devuelve (foto, esquinas de la carta)."""
+    photo = np.full((720, 1280, 3), 200, dtype=np.uint8)
+    for x in range(0, 300, 60):  # tapete de cuadros a la izquierda
+        photo[:, x : x + 30] = (90, 40, 220)
+    photo[0:620, 300:1050] = 30  # fondo oscuro cortado por arriba
+    x0, y0, x1, y1 = 530, 90, 530 + 300, 90 + 419
+    photo[y0:y1, x0:x1] = cv2.resize(card, (x1 - x0, y1 - y0))
+    photo[y1 : y1 + 4, 200:1150] = 250  # canto del soporte pegado a la carta
+    photo[y1 + 4 :, 220:1130] = 235
+    noise = np.random.default_rng(1).normal(0, 3, photo.shape)
+    photo = np.clip(photo.astype(np.float32) + noise, 0, 255).astype(np.uint8)
+    corners = np.float32([[x0, y0], [x1 - 1, y0], [x1 - 1, y1 - 1], [x0, y1 - 1]])
+    return photo, corners
