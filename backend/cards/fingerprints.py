@@ -5,7 +5,7 @@ import logging
 from django.db.models import Q
 
 from vision import fingerprint as fp
-from vision.preprocess import decode_image, normalize_reference
+from vision.preprocess import decode_reference, normalize_reference
 
 from .images import get_image
 from .models import Card, CardFingerprint
@@ -36,7 +36,7 @@ def pending_faces(force: bool = False):
 
 
 def build_one(card: Card, face: str, url: str) -> CardFingerprint:
-    image = normalize_reference(decode_image(get_image(url)))
+    image = normalize_reference(decode_reference(get_image(url)))
     result = fp.compute(image)
     obj, _ = CardFingerprint.objects.update_or_create(
         card=card,

@@ -2,7 +2,7 @@ from django.test import SimpleTestCase
 
 from vision import fingerprint as fp
 from vision.matcher import FingerprintIndex, identify
-from vision.preprocess import CARD_H, CARD_W, extract_card, find_card_quad, order_points
+from vision.preprocess import CARD_H, CARD_W, decode_reference, extract_card, find_card_quad, order_points
 
 from .synthetic import make_card, make_photo, make_stand_photo
 
@@ -32,6 +32,21 @@ class PreprocessTests(SimpleTestCase):
         quad = find_card_quad(photo)
         self.assertIsNotNone(quad)
         self.assertLess(np.abs(order_points(quad) - corners).max(), 15)
+
+
+    def test_reference_with_transparent_margins_is_trimmed(self):
+        # Cartas apaisadas (Z-Extra): lienzo vertical con la carta en medio y
+        # franjas transparentes arriba y abajo.
+        import cv2
+        import numpy as np
+
+        canvas = np.zeros((1254, 893, 4), np.uint8)
+        canvas[309:947, :, :3] = 120
+        canvas[309:947, :, 3] = 255
+        img = decode_reference(cv2.imencode(".png", canvas)[1].tobytes())
+        self.assertEqual(img.shape, (638, 893, 3))
+        opaque = decode_reference(cv2.imencode(".png", canvas[..., :3])[1].tobytes())
+        self.assertEqual(opaque.shape, (1254, 893, 3))
 
 
 class FingerprintTests(SimpleTestCase):

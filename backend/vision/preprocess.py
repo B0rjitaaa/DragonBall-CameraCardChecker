@@ -18,6 +18,26 @@ def decode_image(data: bytes) -> np.ndarray:
     return img
 
 
+def decode_reference(data: bytes) -> np.ndarray:
+    """Decodifica una imagen oficial quitando los márgenes transparentes.
+
+    Las cartas apaisadas (Z-Extra…) vienen en un lienzo vertical con la carta
+    en el centro y franjas transparentes arriba y abajo: sin recortarlas, la
+    referencia sería una carta aplastada con bandas que ninguna foto se parece.
+    """
+    img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_UNCHANGED)
+    if img is None:
+        raise ValueError("No se pudo decodificar la imagen")
+    if img.ndim == 2:
+        return cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+    if img.shape[2] == 4:
+        ys, xs = np.nonzero(img[..., 3] > 16)
+        if len(xs):
+            img = img[ys.min() : ys.max() + 1, xs.min() : xs.max() + 1]
+        return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+    return img
+
+
 def encode_jpeg(img: np.ndarray, quality: int = 90) -> bytes:
     ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, quality])
     if not ok:
