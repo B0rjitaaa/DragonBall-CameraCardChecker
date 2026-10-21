@@ -1,8 +1,17 @@
+import cv2
 from django.test import SimpleTestCase
 
 from vision import fingerprint as fp
 from vision.matcher import FingerprintIndex, identify
-from vision.preprocess import CARD_H, CARD_W, decode_reference, extract_card, find_card_quad, order_points
+from vision.preprocess import (
+    CARD_H,
+    CARD_W,
+    decode_reference,
+    extract_card,
+    find_card_quad,
+    order_points,
+    prepare_reference,
+)
 
 from .synthetic import make_card, make_photo, make_stand_photo
 
@@ -47,6 +56,18 @@ class PreprocessTests(SimpleTestCase):
         self.assertEqual(img.shape, (638, 893, 3))
         opaque = decode_reference(cv2.imencode(".png", canvas[..., :3])[1].tobytes())
         self.assertEqual(opaque.shape, (1254, 893, 3))
+
+
+    def test_product_photo_reference_is_cropped_to_the_card(self):
+        # Foto de tienda: cuadrada, carta sobre fondo blanco.
+        import numpy as np
+
+        card = make_card(5)
+        photo = np.full((1000, 1000, 3), 255, np.uint8)
+        photo[140:860, 242:758] = cv2.resize(card, (516, 720))
+        ref = prepare_reference(photo)
+        self.assertEqual(ref.shape[:2], (CARD_H, CARD_W))
+        self.assertLess(fp.hamming(np.array([fp.compute(ref).phash]), fp.compute(card).phash)[0], 8)
 
 
 class FingerprintTests(SimpleTestCase):

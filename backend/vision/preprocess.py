@@ -184,6 +184,21 @@ def normalize_reference(img: np.ndarray) -> np.ndarray:
     return cv2.resize(img, (CARD_W, CARD_H), interpolation=cv2.INTER_AREA)
 
 
+def prepare_reference(img: np.ndarray) -> np.ndarray:
+    """Imagen de referencia de una impresión, al tamaño canónico.
+
+    Las de Bandai ya vienen recortadas a la carta. Las de otras fuentes (fotos
+    de producto de tiendas, para impresiones que Bandai no publica) suelen ser
+    cuadradas con la carta sobre fondo blanco: hay que localizarla primero.
+    """
+    h, w = img.shape[:2]
+    if max(h, w) / min(h, w) < 1.2:
+        crop, detected = extract_card(img)
+        if detected:
+            return crop
+    return normalize_reference(img)
+
+
 def extract_card(img: np.ndarray) -> tuple[np.ndarray, bool]:
     """Recorta la carta de una captura. Devuelve (recorte, carta_detectada)."""
     quad = find_card_quad(img)
