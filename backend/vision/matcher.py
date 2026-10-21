@@ -20,6 +20,9 @@ _ORB_RATIO = 0.75
 _ORB_FULL_CONFIDENCE = 60
 # Margen mínimo de distancia entre 1º y 2º para no considerarlo ambiguo.
 _AMBIGUITY_MARGIN = 6
+# Por debajo de tantos puntos ORB en común, ninguna candidata convence (las
+# correctas suelen pasar de 40; las erróneas se quedan en 4-10).
+_ORB_WEAK = 15
 
 
 @dataclass
@@ -108,6 +111,7 @@ def identify(
     load_orb: Callable[[list[int]], dict[int, bytes]],
     hash_threshold: int = 20,
     orb_candidates: int = 8,
+    orb_wide: int = 48,
 ) -> MatchResult:
     """Identifica la carta de `img` (BGR).
 
@@ -126,15 +130,26 @@ def identify(
     if best.distance <= hash_threshold and not ambiguous:
         return MatchResult(crop, detected, "hash", best.hash_confidence, candidates)
 
-    pool = candidates[:orb_candidates]
-    orb_data = load_orb([c.fingerprint_id for c in pool])
     gray = fp._prepare_gray(crop)
     query_variants = [fp.orb_descriptors(gray), fp.orb_descriptors(cv2.rotate(gray, cv2.ROTATE_180))]
-    for cand in pool:
-        ref = fp.descriptors_from_bytes(orb_data.get(cand.fingerprint_id, b""))
-        cand.orb_matches = max(_orb_good_matches(q, ref) for q in query_variants)
+
+    def score(pool: list[Candidate]) -> None:
+        orb_data = load_orb([c.fingerprint_id for c in pool])
+        for cand in pool:
+            ref = fp.descriptors_from_bytes(orb_data.get(cand.fingerprint_id, b""))
+            cand.orb_matches = max(_orb_good_matches(q, ref) for q in query_variants)
+
+    pool = candidates[:orb_candidates]
+    score(pool)
+    if max(c.orb_matches or 0 for c in pool) < _ORB_WEAK and orb_wide > orb_candidates:
+        # Ninguna convence (recorte imperfecto, funda, brillos): la buena suele
+        # estar algo más abajo en el ranking por hash. Se miran más candidatas.
+        extra = _rank_by_hash(index, crop, orb_wide)[orb_candidates:]
+        score(extra)
+        pool += extra
 
     pool.sort(key=lambda c: (-(c.orb_matches or 0), c.distance))
     top = pool[0]
     confidence = max(top.orb_confidence, top.hash_confidence)
-    return MatchResult(crop, detected, "orb", confidence, pool + candidates[orb_candidates:])
+    seen = {c.fingerprint_id for c in pool}
+    return MatchResult(crop, detected, "orb", confidence, pool + [c for c in candidates if c.fingerprint_id not in seen])
