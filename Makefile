@@ -73,8 +73,8 @@ import:          ## Importa el JSON de cartas (inserta o actualiza)
 images:          ## Descarga a data/card_images las imágenes oficiales que falten
 	$(COMPOSE) exec backend python manage.py download_card_images
 
-fingerprints:    ## Calcula los fingerprints pendientes
-	$(COMPOSE) exec backend python manage.py build_fingerprints
+fingerprints:    ## Calcula los fingerprints pendientes (FORCE=1: todos)
+	$(COMPOSE) exec backend python manage.py build_fingerprints $(if $(FORCE),--force,)
 
 catalog: import images fingerprints   ## Todo el catálogo desde cero
 
