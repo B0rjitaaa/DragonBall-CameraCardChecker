@@ -150,7 +150,11 @@ export default function Scanner() {
       }
       return api.createScan();
     },
-    onSuccess: (scan) => setScanId(scan.id),
+    onSuccess: (scan) => {
+      setScanId(scan.id);
+      // Fuera del modo ráfaga: el resumen de la última sesión taparía el resultado.
+      setBurstId(null);
+    },
     onSettled: () => setPhase(null),
   });
 
