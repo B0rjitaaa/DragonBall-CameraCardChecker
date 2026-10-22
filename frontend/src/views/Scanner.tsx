@@ -7,7 +7,7 @@ import BurstPanel from "../components/BurstPanel";
 import DeviceCamera, { deviceCameraSupported, type Facing } from "../components/DeviceCamera";
 import ScanResult from "../components/ScanResult";
 import { ChangeDetector, type DetectorState } from "../lib/changeDetector";
-import { frameFromVideo, preparePhoto } from "../lib/photo";
+import { frameFromVideo, guideRegion, preparePhoto } from "../lib/photo";
 import { unlockAudio } from "../lib/sounds";
 
 const PREVIEW_INTERVAL_MS = 500;
@@ -115,6 +115,7 @@ export default function Scanner() {
   const [captureError, setCaptureError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const previewRef = useRef<HTMLImageElement>(null);
+  const guideRef = useRef<HTMLDivElement>(null);
 
   // Modo ráfaga: sesión activa (o la última, para seguir viendo su resumen).
   const [burstId, setBurstId] = useState<number | null>(null);
@@ -312,7 +313,9 @@ export default function Scanner() {
     try {
       if (source === "device") {
         if (!videoRef.current) throw new Error("La cámara no está activa");
-        await api.createScan(await frameFromVideo(videoRef.current), burstId, true, spot);
+        // Solo lo que está dentro del marco: las cartas vecinas del archivador no cuentan.
+        const region = guideRef.current ? guideRegion(videoRef.current, guideRef.current) : null;
+        await api.createScan(await frameFromVideo(videoRef.current, region), burstId, true, spot);
       } else {
         await api.createScan(undefined, burstId, true, spot);
       }
@@ -383,7 +386,7 @@ export default function Scanner() {
             <CameraPreview imgRef={previewRef} />
           )}
           {/* Guía con la proporción de una carta (63 × 88 mm) para encuadrarla. */}
-          <div className="card-guide" aria-hidden="true" />
+          <div ref={guideRef} className="card-guide" aria-hidden="true" />
           {burstActive && (
             <div className={`burst-status ${sending ? "sending" : detectorState}`}>
               {sending ? "Enviando…" : DETECTOR_LABELS[detectorState]}
