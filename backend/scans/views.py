@@ -28,6 +28,17 @@ class ScanViewSet(
 
     def perform_create(self, serializer):
         has_image = bool(serializer.validated_data.get("image"))
+        data = serializer.validated_data
+        if data.get("session") and data.get("binder_page") and data.get("binder_slot"):
+            # Repetir una casilla del archivador: la captura anterior de esa casilla se deshace.
+            previous = Scan.objects.filter(
+                session=data["session"], binder_page=data["binder_page"], binder_slot=data["binder_slot"], dismissed=False
+            )
+            with transaction.atomic():
+                for old in previous:
+                    remove_scan_from_collection(old)
+                    old.dismissed = True
+                    old.save(update_fields=["dismissed"])
         scan = serializer.save(source=Scan.Source.UPLOAD if has_image else Scan.Source.CAMERA)
         transaction.on_commit(lambda: identify_card.delay(scan.pk))
 

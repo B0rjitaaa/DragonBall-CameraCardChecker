@@ -1,4 +1,4 @@
-import type { Card, CollectionEntry, Facets, Location, Page, Scan, ScanSession } from "./types";
+import type { BinderSpot, Card, CollectionEntry, Facets, Location, Page, Scan, ScanSession, SessionMode } from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
@@ -20,22 +20,25 @@ function json(method: string, body: unknown): RequestInit {
 }
 
 export const api = {
-  createScan(image?: File, session?: number, afterEmpty = true): Promise<Scan> {
+  /** `binder`: página y casilla (1-9) en una sesión de archivador. */
+  createScan(image?: File, session?: number, afterEmpty = true, binder?: BinderSpot): Promise<Scan> {
+    const spot = binder ? { binder_page: binder.page, binder_slot: binder.slot } : {};
     if (!image) {
-      return request("/api/scans/", json("POST", session ? { session, after_empty: afterEmpty } : {}));
+      return request("/api/scans/", json("POST", session ? { session, after_empty: afterEmpty, ...spot } : {}));
     }
     const form = new FormData();
     form.append("image", image);
     if (session) {
       form.append("session", String(session));
       form.append("after_empty", afterEmpty ? "true" : "false");
+      for (const [k, v] of Object.entries(spot)) form.append(k, String(v));
     }
     return request("/api/scans/", { method: "POST", body: form });
   },
   undoScan: (id: number) => request<Scan>(`/api/scans/${id}/undo/`, json("POST", {})),
 
-  createSession: (location?: number | null) =>
-    request<ScanSession>("/api/sessions/", json("POST", location ? { location } : {})),
+  createSession: (location?: number | null, mode: SessionMode = "burst") =>
+    request<ScanSession>("/api/sessions/", json("POST", { mode, ...(location ? { location } : {}) })),
   listLocations: () => request<Location[]>("/api/locations/"),
   getSession: (id: number) => request<ScanSession>(`/api/sessions/${id}/`),
   endSession: (id: number) => request<ScanSession>(`/api/sessions/${id}/end/`, json("POST", {})),

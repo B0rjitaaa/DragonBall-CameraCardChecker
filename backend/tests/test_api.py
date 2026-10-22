@@ -414,6 +414,62 @@ class RepeatGuardTests(BurstFixture, TestCase):
 
 
 
+@override_settings(MEDIA_ROOT=MEDIA, CELERY_TASK_ALWAYS_EAGER=True, AUTO_ADD_MIN_CONFIDENCE=0.65)
+class BinderSessionTests(BurstFixture, TestCase):
+    """Sesión de archivador: carta a carta por casillas, con la posición en la nota."""
+
+    def setUp(self):
+        super().setUp()
+        from collection.models import Location
+
+        self.binder = Location.objects.create(name="Archivador rojo", kind="binder")
+        self.session = self.client.post(
+            "/api/sessions/", {"mode": "binder", "location": self.binder.id}, format="json"
+        ).data["id"]
+
+    def _slot(self, seed, page, slot):
+        upload = SimpleUploadedFile("frame.jpg", self._card_photo(seed), content_type="image/jpeg")
+        data = {"image": upload, "session": self.session, "after_empty": "true", "binder_page": page, "binder_slot": slot}
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post("/api/scans/", data, format="multipart")
+        self.assertEqual(response.status_code, 202, response.data)
+        return self.client.get(f"/api/scans/{response.data['id']}/").data
+
+    def entry(self, card):
+        return self.Entry.objects.get(card=card, location=self.binder)
+
+    def test_cards_go_to_the_binder_with_their_position(self):
+        scan = self._slot(4, page=12, slot=6)
+        self.assertTrue(scan["added_to_collection"])
+        self.assertEqual((scan["binder_page"], scan["binder_slot"]), (12, 6))
+        self.assertEqual(self.entry(self.cards[4]).notes, "Pág. 12 · fila 2 · col 3")
+        session = self.client.get(f"/api/sessions/{self.session}/").data
+        self.assertEqual(session["mode"], "binder")
+
+    def test_same_card_side_by_side_is_two_copies(self):
+        # En un archivador es normal tener copias juntas: no hay "¿Otra copia?".
+        self._slot(4, page=1, slot=1)
+        second = self._slot(4, page=1, slot=2)
+        self.assertFalse(second["repeat_suspect"])
+        entry = self.entry(self.cards[4])
+        self.assertEqual(entry.quantity, 2)
+        self.assertEqual(entry.notes.splitlines(), ["Pág. 1 · fila 1 · col 1", "Pág. 1 · fila 1 · col 2"])
+        self.client.post(f"/api/scans/{second['id']}/undo/", {}, format="json")
+        self.assertEqual((self.entry(self.cards[4]).quantity, self.entry(self.cards[4]).notes), (1, "Pág. 1 · fila 1 · col 1"))
+
+    def test_recapturing_a_slot_replaces_the_previous_card(self):
+        first = self._slot(4, page=3, slot=5)
+        self._slot(6, page=3, slot=5)
+        self.assertTrue(self.client.get(f"/api/scans/{first['id']}/").data["dismissed"])
+        self.assertFalse(self.Entry.objects.filter(card=self.cards[4]).exists())
+        self.assertEqual(self.entry(self.cards[6]).notes, "Pág. 3 · fila 2 · col 2")
+
+    def test_slot_validation(self):
+        upload = SimpleUploadedFile("frame.jpg", self._card_photo(4), content_type="image/jpeg")
+        data = {"image": upload, "session": self.session, "binder_page": 1, "binder_slot": 10}
+        self.assertEqual(self.client.post("/api/scans/", data, format="multipart").status_code, 400)
+
+
 class CollectionExportTests(TestCase):
     def test_export_lists_every_entry_with_bandai_id_and_location(self):
         from collection.models import CollectionEntry, Location

@@ -103,15 +103,26 @@ export interface SessionScan {
   copies: number;
   dismissed: boolean;
   repeat_suspect: boolean;
+  binder_page: number | null;
+  binder_slot: number | null;
   error: string;
   duration_ms: number | null;
   created_at: string;
+}
+
+export type SessionMode = "burst" | "binder";
+
+/** Posición en un archivador: página y casilla (1-9, por filas de 3). */
+export interface BinderSpot {
+  page: number;
+  slot: number;
 }
 
 export interface ScanSession {
   id: number;
   started_at: string;
   ended_at: string | null;
+  mode: SessionMode;
   location: number | null;
   location_name: string;
   auto_add_min_confidence: number;

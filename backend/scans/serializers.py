@@ -30,6 +30,8 @@ class ScanSerializer(serializers.ModelSerializer):
             "dismissed",
             "after_empty",
             "repeat_suspect",
+            "binder_page",
+            "binder_slot",
             "method",
             "candidates",
             "error",
@@ -37,11 +39,15 @@ class ScanSerializer(serializers.ModelSerializer):
             "created_at",
             "finished_at",
         ]
-        read_only_fields = [f for f in fields if f not in ("image", "session", "after_empty")]
+        read_only_fields = [
+            f for f in fields if f not in ("image", "session", "after_empty", "binder_page", "binder_slot")
+        ]
         extra_kwargs = {
             "image": {"required": False},
             "session": {"required": False},
             "after_empty": {"required": False},
+            "binder_page": {"required": False, "min_value": 1, "max_value": 999},
+            "binder_slot": {"required": False, "min_value": 1, "max_value": 9},
         }
 
 
@@ -79,6 +85,8 @@ class SessionScanSerializer(serializers.ModelSerializer):
             "copies",
             "dismissed",
             "repeat_suspect",
+            "binder_page",
+            "binder_slot",
             "error",
             "duration_ms",
             "created_at",
@@ -98,7 +106,8 @@ class ScanSessionSerializer(serializers.ModelSerializer):
     class Meta:
         model = ScanSession
         fields = [
-            "id", "started_at", "ended_at", "location", "location_name", "auto_add_min_confidence", "stats", "scans",
+            "id", "started_at", "ended_at", "mode", "location", "location_name", "auto_add_min_confidence", "stats",
+            "scans",
         ]
         read_only_fields = ["started_at", "ended_at"]
 

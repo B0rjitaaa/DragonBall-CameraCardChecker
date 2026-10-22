@@ -688,3 +688,88 @@ button.link {
 .burst-location select {
   padding: 6px 8px;
 }
+
+/* Modo archivador */
+.binder-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.binder-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.binder-page {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.binder-page button {
+  padding: 4px 12px;
+}
+
+.binder-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  max-width: 360px;
+}
+
+.binder-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 54px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.8rem;
+  text-align: left;
+}
+
+.binder-slot small {
+  color: var(--muted);
+}
+
+.binder-slot span {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.binder-slot.current {
+  border: 2px solid var(--accent);
+}
+
+.binder-slot.ok span {
+  color: var(--ok);
+}
+
+.binder-slot.warn span {
+  color: var(--warn);
+}
+
+.binder-slot.error span {
+  color: var(--error);
+}
+
+.binder-slot.muted span,
+.binder-slot.busy span {
+  color: var(--muted);
+}
+
+.binder-hint {
+  margin: 0;
+  font-size: 0.9rem;
+}

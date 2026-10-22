@@ -14,8 +14,13 @@ class ScanSession(models.Model):
     """Sesión de modo ráfaga: el usuario va cambiando cartas bajo la cámara y
     las identificadas con confianza suficiente se añaden solas a la colección."""
 
+    class Mode(models.TextChoices):
+        BURST = "burst", "Ráfaga"  # cámara quieta, cada carta nueva se detecta sola
+        BINDER = "binder", "Archivador"  # carta a carta por las casillas de cada página
+
     started_at = models.DateTimeField(auto_now_add=True)
     ended_at = models.DateTimeField(null=True, blank=True)
+    mode = models.CharField(max_length=8, choices=Mode.choices, default=Mode.BURST)
     # Dónde entran las cartas que se añaden (vacío = "Sin ubicar").
     location = models.ForeignKey(
         Location, null=True, blank=True, on_delete=models.SET_NULL, related_name="sessions"
@@ -72,6 +77,9 @@ class Scan(models.Model):
     # haya recolocado la misma carta: no se añade sola ("¿Otra copia?").
     after_empty = models.BooleanField(default=True)
     repeat_suspect = models.BooleanField(default=False)
+    # Sesión de archivador: página y casilla (1-9, por filas de 3) de la carta.
+    binder_page = models.PositiveSmallIntegerField(null=True, blank=True)
+    binder_slot = models.PositiveSmallIntegerField(null=True, blank=True)
     method = models.CharField(max_length=8, blank=True)
     candidates = models.JSONField(default=list, blank=True)
     error = models.TextField(blank=True)
@@ -84,3 +92,11 @@ class Scan(models.Model):
 
     def __str__(self):
         return f"Scan #{self.pk} ({self.status})"
+
+    @property
+    def binder_position(self) -> str:
+        """"Pág. 12 · fila 2 · col 3" (vacío si no es de una sesión de archivador)."""
+        if not self.binder_page or not self.binder_slot:
+            return ""
+        row, col = divmod(self.binder_slot - 1, 3)
+        return f"Pág. {self.binder_page} · fila {row + 1} · col {col + 1}"

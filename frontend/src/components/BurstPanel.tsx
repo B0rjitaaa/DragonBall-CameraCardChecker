@@ -178,9 +178,11 @@ export default function BurstPanel({ sessionId, active }: { sessionId: number; a
         </div>
       </div>
       <p className="muted small">
-        Destino: <strong>{session.data.location_name}</strong>. Se añaden solas a la colección a partir del {percent(auto_add_min_confidence)} (1 copia; con − / +
-        cambias cuántas). Por debajo quedan "por revisar". Si la misma carta sale dos veces seguidas sin retirarla, se
-        pregunta "¿Otra copia?" y eliges cuántas añadir.
+        Destino: <strong>{session.data.location_name}</strong>. Se añaden solas a la colección a partir del{" "}
+        {percent(auto_add_min_confidence)} (1 copia; con − / + cambias cuántas). Por debajo quedan "por revisar".{" "}
+        {session.data.mode === "binder"
+          ? "Cada copia guarda su página, fila y columna en la nota; repetir una casilla sustituye la captura anterior."
+          : 'Si la misma carta sale dos veces seguidas sin retirarla, se pregunta "¿Otra copia?" y eliges cuántas añadir.'}
       </p>
 
       {scans.length === 0 ? (
@@ -198,6 +200,7 @@ export default function BurstPanel({ sessionId, active }: { sessionId: number; a
                   <span className="muted small">
                     {percent(s.confidence)}
                     {s.confirmed && " · confirmada"}
+                    {s.binder_page != null && s.binder_slot != null && ` · pág. ${s.binder_page}, casilla ${s.binder_slot}`}
                   </span>
                 </div>
                 <span className={`badge ${state.tone}`}>{state.label}</span>

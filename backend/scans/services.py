@@ -101,12 +101,18 @@ def add_scan_to_collection(scan) -> None:
     if scan.added_to_collection or not scan.matched_card_id:
         return
     copies = max(scan.copies, 1)
+    position = scan.binder_position
     with transaction.atomic():
         entry, created = CollectionEntry.objects.select_for_update().get_or_create(
-            card_id=scan.matched_card_id, location=_collection_location(scan), defaults={"quantity": copies}
+            card_id=scan.matched_card_id,
+            location=_collection_location(scan),
+            defaults={"quantity": copies, "notes": position},
         )
         if not created:
             CollectionEntry.objects.filter(pk=entry.pk).update(quantity=F("quantity") + copies)
+            if position and position not in entry.notes.splitlines():
+                entry.notes = "\n".join(filter(None, [entry.notes, position]))
+                entry.save(update_fields=["notes"])
         scan.added_to_collection = True
         scan.collection_entry = entry
         scan.save(update_fields=["added_to_collection", "collection_entry"])
@@ -125,6 +131,10 @@ def remove_scan_from_collection(scan) -> None:
                 entry.delete()
             else:
                 CollectionEntry.objects.filter(pk=entry.pk).update(quantity=F("quantity") - scan.copies)
+                position = scan.binder_position
+                if position and position in entry.notes.splitlines():
+                    entry.notes = "\n".join(line for line in entry.notes.splitlines() if line != position)
+                    entry.save(update_fields=["notes"])
         scan.added_to_collection = False
         scan.collection_entry = None
         scan.save(update_fields=["added_to_collection", "collection_entry"])

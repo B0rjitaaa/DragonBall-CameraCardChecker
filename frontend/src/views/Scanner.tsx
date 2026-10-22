@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type RefObject, useEffect, useRef, useState } from "react";
 
 import { api } from "../api";
+import BinderBar from "../components/BinderBar";
 import BurstPanel from "../components/BurstPanel";
 import DeviceCamera, { deviceCameraSupported, type Facing } from "../components/DeviceCamera";
 import ScanResult from "../components/ScanResult";
@@ -140,6 +141,11 @@ export default function Scanner() {
       ? burstLocation
       : null;
   const [burstActive, setBurstActive] = useState(false);
+  // Sesión de archivador: página, casilla a capturar (null = página terminada) y huecos.
+  const [binderActive, setBinderActive] = useState(false);
+  const [binderPage, setBinderPage] = useState(1);
+  const [binderSlot, setBinderSlot] = useState<number | null>(1);
+  const [binderSkipped, setBinderSkipped] = useState<Set<number>>(() => new Set());
   const [detectorState, setDetectorState] = useState<DetectorState>("idle");
   const [sending, setSending] = useState(false);
   const detector = useRef<ChangeDetector | null>(null);
@@ -273,9 +279,64 @@ export default function Scanner() {
     }
   };
 
+  const startBinder = async () => {
+    unlockAudio();
+    setCaptureError(null);
+    try {
+      const session = await api.createSession(validLocation, "binder");
+      setBurstId(session.id);
+      setBinderActive(true);
+      setBinderSlot(1);
+      setBinderSkipped(new Set());
+    } catch (err) {
+      setCaptureError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const stopBinder = async () => {
+    setBinderActive(false);
+    if (burstId != null) {
+      await api.endSession(burstId).catch(() => undefined);
+      void queryClient.invalidateQueries({ queryKey: ["session", burstId] });
+    }
+  };
+
+  const nextSlot = (from: number) => (from >= 9 ? null : from + 1);
+
+  /** Captura la casilla actual del archivador y pasa a la siguiente (sin esperar a identificar). */
+  const captureBinder = async () => {
+    if (burstId == null || binderSlot == null || sending) return;
+    const spot = { page: binderPage, slot: binderSlot };
+    setSending(true);
+    setCaptureError(null);
+    try {
+      if (source === "device") {
+        if (!videoRef.current) throw new Error("La cámara no está activa");
+        await api.createScan(await frameFromVideo(videoRef.current), burstId, true, spot);
+      } else {
+        await api.createScan(undefined, burstId, true, spot);
+      }
+      setBinderSkipped((s) => {
+        const next = new Set(s);
+        next.delete(spot.slot);
+        return next;
+      });
+      setBinderSlot(nextSlot(spot.slot));
+      void queryClient.invalidateQueries({ queryKey: ["session", burstId] });
+    } catch (err) {
+      setCaptureError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSending(false);
+    }
+  };
+
   const busy = create.isPending;
   const captureManual = async () => {
     setCaptureError(null);
+    if (binderActive) {
+      void captureBinder();
+      return;
+    }
     if (burstActive && burstId != null) {
       void sendToSession(burstId); // en sesión, la captura manual entra en la sesión
       return;
@@ -330,6 +391,28 @@ export default function Scanner() {
           )}
         </div>
 
+        {binderActive && burstId != null ? (
+          <BinderBar
+            sessionId={burstId}
+            page={binderPage}
+            slot={binderSlot}
+            skipped={binderSkipped}
+            sending={sending}
+            onSelect={setBinderSlot}
+            onCapture={() => void captureBinder()}
+            onSkip={() => {
+              if (binderSlot == null) return;
+              setBinderSkipped((s) => new Set(s).add(binderSlot));
+              setBinderSlot(nextSlot(binderSlot));
+            }}
+            onPage={(page) => {
+              setBinderPage(Math.max(1, page));
+              setBinderSlot(1);
+              setBinderSkipped(new Set());
+            }}
+            onStop={() => void stopBinder()}
+          />
+        ) : (
         <div className="actions">
           {burstActive ? (
             <button className="stop" onClick={() => void stopBurst()}>
@@ -338,6 +421,9 @@ export default function Scanner() {
           ) : (
             <>
               <button onClick={() => void startBurst()}>▶ Modo ráfaga</button>
+              <button onClick={() => void startBinder()} title="Carta a carta por las casillas de cada página">
+                ▦ Modo archivador
+              </button>
               <label className="burst-location">
                 <span>Guardar en</span>
                 <select
@@ -373,6 +459,7 @@ export default function Scanner() {
           )}
           {!burstActive && <UploadButton disabled={busy} onPhoto={(file) => create.mutate({ file })} />}
         </div>
+        )}
         {burstActive && (
           <p className="muted small">
             Empieza con la zona vacía (el fondo se aprende en 1 s) y ve poniendo las cartas de una en una dentro del
@@ -387,12 +474,12 @@ export default function Scanner() {
       <section>
         {burstId != null ? (
           <>
-            {!burstActive && (
+            {!burstActive && !binderActive && (
               <p className="muted small">
                 Sesión terminada. <button className="link" onClick={() => setBurstId(null)}>Cerrar resumen</button>
               </p>
             )}
-            <BurstPanel sessionId={burstId} active={burstActive} />
+            <BurstPanel sessionId={burstId} active={burstActive || binderActive} />
           </>
         ) : scan.data ? (
           <ScanResult key={scan.data.id} scan={scan.data} />
