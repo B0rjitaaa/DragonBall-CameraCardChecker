@@ -63,8 +63,20 @@ export interface CollectionEntry {
   id: number;
   card: CardSummary;
   quantity: number;
-  condition: string;
+  location: number;
+  location_name: string;
   notes: string;
+}
+
+export interface Location {
+  id: number;
+  name: string;
+  kind: "deck" | "binder" | "storage" | "other";
+  notes: string;
+  is_default: boolean;
+  position: number;
+  cards: number;
+  copies: number;
 }
 
 export interface Page<T> {
@@ -100,7 +112,8 @@ export interface ScanSession {
   id: number;
   started_at: string;
   ended_at: string | null;
-  condition: string;
+  location: number | null;
+  location_name: string;
   auto_add_min_confidence: number;
   stats: { total: number; added: number; copies: number; review: number; pending: number; failed: number; undone: number };
   scans: SessionScan[];

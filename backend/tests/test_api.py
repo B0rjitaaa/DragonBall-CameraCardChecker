@@ -415,20 +415,25 @@ class RepeatGuardTests(BurstFixture, TestCase):
 
 
 class CollectionExportTests(TestCase):
-    def test_export_lists_every_entry_with_bandai_id(self):
-        from collection.models import CollectionEntry
+    def test_export_lists_every_entry_with_bandai_id_and_location(self):
+        from collection.models import CollectionEntry, Location
 
         a = Card.objects.create(bandai_id=4, card_number="BT1-001", name="Champa")
         b = Card.objects.create(bandai_id=1088, card_number="BT1-005", name="Champa PR")
-        CollectionEntry.objects.create(card=a, quantity=2)
-        CollectionEntry.objects.create(card=a, quantity=1, condition="played")
-        CollectionEntry.objects.create(card=b, quantity=1)
+        deck = Location.objects.create(name="Mazo rojo", kind="deck")
+        CollectionEntry.objects.create(card=a, location=Location.default(), quantity=2)
+        CollectionEntry.objects.create(card=a, location=deck, quantity=1, notes="titular")
+        CollectionEntry.objects.create(card=b, location=deck, quantity=1)
         data = APIClient().get("/api/collection/export/").data
         self.assertEqual(len(data), 3)  # sin paginar
         self.assertEqual(
-            data[0], {"bandai_id": 4, "card_number": "BT1-001", "name": "Champa", "quantity": 2, "condition": "near_mint"}
+            data[0],
+            {
+                "bandai_id": 4, "card_number": "BT1-001", "name": "Champa", "quantity": 2,
+                "location_id": Location.default().id, "location": "Sin ubicar", "location_kind": "other", "notes": "",
+            },
         )
-
+        self.assertEqual((data[1]["location"], data[1]["notes"]), ("Mazo rojo", "titular"))
 
 
 @override_settings(ENHANCED_API_URL="http://enhanced:5173")
@@ -481,30 +486,51 @@ class CatalogSyncTests(TestCase):
 
 class CollectionAdjustTests(TestCase):
     def setUp(self):
-        from collection.models import CollectionEntry
+        from collection.models import CollectionEntry, Location
 
-        self.Entry = CollectionEntry
+        self.Entry, self.Location = CollectionEntry, Location
         self.card = Card.objects.create(bandai_id=4, card_number="BT1-001", name="Champa")
+        self.deck = Location.objects.create(name="Mazo rojo", kind="deck")
+        self.binder = Location.objects.create(name="Archivador", kind="binder")
         self.client = APIClient()
 
     def adjust(self, **body):
         return self.client.post("/api/collection/adjust/", {"bandai_id": 4, **body}, format="json")
 
-    def test_add_creates_and_sums_near_mint(self):
+    def put(self, location, quantity):
+        self.Entry.objects.create(card=self.card, location=location, quantity=quantity)
+
+    def by_location(self, data):
+        return {loc["name"]: loc["quantity"] for loc in data["locations"]}
+
+    def test_add_goes_to_unplaced_by_default(self):
         self.assertEqual(self.adjust(delta=1).data["quantity"], 1)
         data = self.adjust(delta=2).data
-        self.assertEqual((data["quantity"], data["conditions"]), (3, {"near_mint": 3}))
+        self.assertEqual((data["quantity"], self.by_location(data)), (3, {"Sin ubicar": 3}))
 
-    def test_remove_prefers_near_mint_then_largest(self):
-        self.Entry.objects.create(card=self.card, condition="near_mint", quantity=1)
-        self.Entry.objects.create(card=self.card, condition="played", quantity=2)
+    def test_add_to_a_location(self):
+        data = self.adjust(delta=2, location=self.deck.id).data
+        self.assertEqual(self.by_location(data), {"Mazo rojo": 2})
+
+    def test_remove_takes_unplaced_first_then_the_only_other_location(self):
+        self.put(self.Location.default(), 1)
+        self.put(self.deck, 3)
         data = self.adjust(delta=-2).data
-        self.assertEqual(data["conditions"], {"played": 1})  # se fue la NM y una Played
+        self.assertEqual(self.by_location(data), {"Mazo rojo": 2})
+
+    def test_remove_with_copies_in_several_locations_asks_which(self):
+        self.put(self.deck, 2)
+        self.put(self.binder, 1)
+        response = self.adjust(delta=-1)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(self.by_location(response.data), {"Mazo rojo": 2, "Archivador": 1})
+        data = self.adjust(delta=-1, location=self.binder.id).data
+        self.assertEqual(self.by_location(data), {"Mazo rojo": 2})
 
     def test_last_copy_removes_the_entry(self):
         self.adjust(delta=1)
         data = self.adjust(delta=-1).data
-        self.assertEqual((data["quantity"], data["conditions"]), (0, {}))
+        self.assertEqual((data["quantity"], data["locations"]), (0, []))
         self.assertFalse(self.Entry.objects.exists())
 
     def test_remove_from_empty_is_harmless(self):
@@ -514,3 +540,60 @@ class CollectionAdjustTests(TestCase):
         self.assertEqual(self.adjust(delta=0).status_code, 400)
         response = self.client.post("/api/collection/adjust/", {"bandai_id": 999, "delta": 1}, format="json")
         self.assertEqual(response.status_code, 404)
+
+    def test_move_keeps_the_total(self):
+        self.put(self.Location.default(), 6)
+        move = lambda **b: self.client.post(  # noqa: E731
+            "/api/collection/move/", {"bandai_id": 4, **b}, format="json"
+        )
+        move(source=self.Location.default().id, target=self.deck.id, quantity=4)
+        data = move(source=self.Location.default().id, target=self.binder.id, quantity=1).data
+        self.assertEqual(data["quantity"], 6)
+        self.assertEqual(self.by_location(data), {"Sin ubicar": 1, "Mazo rojo": 4, "Archivador": 1})
+        too_many = move(source=self.binder.id, target=self.deck.id, quantity=2)
+        self.assertEqual(too_many.status_code, 400)
+
+    def test_note_per_location(self):
+        self.put(self.binder, 1)
+        data = self.client.post(
+            "/api/collection/note/", {"bandai_id": 4, "location": self.binder.id, "notes": "página 12"}, format="json"
+        ).data
+        self.assertEqual(data["locations"][0]["notes"], "página 12")
+
+
+class LocationTests(TestCase):
+    def setUp(self):
+        from collection.models import CollectionEntry, Location
+
+        self.Entry, self.Location = CollectionEntry, Location
+        self.client = APIClient()
+        self.card = Card.objects.create(bandai_id=4, card_number="BT1-001", name="Champa")
+
+    def test_list_always_includes_unplaced_with_totals(self):
+        deck = self.client.post("/api/locations/", {"name": "Mazo rojo", "kind": "deck"}, format="json").data
+        self.Entry.objects.create(card=self.card, location_id=deck["id"], quantity=4)
+        data = self.client.get("/api/locations/").data
+        self.assertEqual([(loc["name"], loc["copies"]) for loc in data], [("Sin ubicar", 0), ("Mazo rojo", 4)])
+        self.assertTrue(data[0]["is_default"])
+
+    def test_deleting_a_location_sends_its_copies_to_unplaced(self):
+        deck = self.Location.objects.create(name="Mazo rojo")
+        self.Entry.objects.create(card=self.card, location=self.Location.default(), quantity=2)
+        self.Entry.objects.create(card=self.card, location=deck, quantity=4)
+        self.assertEqual(self.client.delete(f"/api/locations/{deck.id}/").status_code, 204)
+        self.assertEqual(list(self.Entry.objects.values_list("location__name", "quantity")), [("Sin ubicar", 6)])
+
+    def test_unplaced_cannot_be_deleted(self):
+        default = self.Location.default()
+        self.assertEqual(self.client.delete(f"/api/locations/{default.id}/").status_code, 400)
+
+    def test_burst_session_adds_into_its_location(self):
+        from scans.models import Scan, ScanSession
+        from scans.services import add_scan_to_collection
+
+        deck = self.Location.objects.create(name="Mazo rojo")
+        session = self.client.post("/api/sessions/", {"location": deck.id}, format="json").data
+        self.assertEqual(session["location_name"], "Mazo rojo")
+        scan = Scan.objects.create(session=ScanSession.objects.get(pk=session["id"]), matched_card=self.card, status="done")
+        add_scan_to_collection(scan)
+        self.assertEqual(list(self.Entry.objects.values_list("location__name", "quantity")), [("Mazo rojo", 1)])

@@ -1,4 +1,4 @@
-import type { Card, CollectionEntry, Facets, Page, Scan, ScanSession } from "./types";
+import type { Card, CollectionEntry, Facets, Location, Page, Scan, ScanSession } from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
@@ -34,7 +34,9 @@ export const api = {
   },
   undoScan: (id: number) => request<Scan>(`/api/scans/${id}/undo/`, json("POST", {})),
 
-  createSession: () => request<ScanSession>("/api/sessions/", json("POST", {})),
+  createSession: (location?: number | null) =>
+    request<ScanSession>("/api/sessions/", json("POST", location ? { location } : {})),
+  listLocations: () => request<Location[]>("/api/locations/"),
   getSession: (id: number) => request<ScanSession>(`/api/sessions/${id}/`),
   endSession: (id: number) => request<ScanSession>(`/api/sessions/${id}/end/`, json("POST", {})),
   getScan: (id: number) => request<Scan>(`/api/scans/${id}/`),

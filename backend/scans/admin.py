@@ -13,4 +13,4 @@ class ScanAdmin(admin.ModelAdmin):
 
 @admin.register(ScanSession)
 class ScanSessionAdmin(admin.ModelAdmin):
-    list_display = ["id", "started_at", "ended_at", "condition"]
+    list_display = ["id", "started_at", "ended_at", "location"]

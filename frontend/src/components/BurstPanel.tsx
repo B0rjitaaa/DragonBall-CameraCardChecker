@@ -178,7 +178,7 @@ export default function BurstPanel({ sessionId, active }: { sessionId: number; a
         </div>
       </div>
       <p className="muted small">
-        Se añaden solas a la colección a partir del {percent(auto_add_min_confidence)} (1 copia, Near Mint; con − / +
+        Destino: <strong>{session.data.location_name}</strong>. Se añaden solas a la colección a partir del {percent(auto_add_min_confidence)} (1 copia; con − / +
         cambias cuántas). Por debajo quedan "por revisar". Si la misma carta sale dos veces seguidas sin retirarla, se
         pregunta "¿Otra copia?" y eliges cuántas añadir.
       </p>

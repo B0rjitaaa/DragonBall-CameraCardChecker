@@ -6,7 +6,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from cards.views import CardViewSet
-from collection.views import CollectionEntryViewSet
+from collection.views import CollectionEntryViewSet, LocationViewSet
 from scans.views import ScanSessionViewSet, ScanViewSet, camera_preview
 
 router = DefaultRouter()
@@ -14,6 +14,7 @@ router.register("cards", CardViewSet, basename="card")
 router.register("scans", ScanViewSet, basename="scan")
 router.register("sessions", ScanSessionViewSet, basename="session")
 router.register("collection", CollectionEntryViewSet, basename="collection")
+router.register("locations", LocationViewSet, basename="location")
 
 
 def health(_request):

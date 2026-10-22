@@ -3,6 +3,7 @@ from rest_framework import serializers
 
 from cards.models import Card
 from cards.serializers import CardSerializer
+from collection.models import DEFAULT_LOCATION_NAME
 
 from .models import Scan, ScanSession
 
@@ -89,11 +90,17 @@ class ScanSessionSerializer(serializers.ModelSerializer):
     scans = serializers.SerializerMethodField()
 
     auto_add_min_confidence = serializers.SerializerMethodField()
+    location_name = serializers.SerializerMethodField()
+
+    def get_location_name(self, obj):
+        return obj.location.name if obj.location_id else DEFAULT_LOCATION_NAME
 
     class Meta:
         model = ScanSession
-        fields = ["id", "started_at", "ended_at", "condition", "auto_add_min_confidence", "stats", "scans"]
-        read_only_fields = ["started_at", "ended_at", "condition"]
+        fields = [
+            "id", "started_at", "ended_at", "location", "location_name", "auto_add_min_confidence", "stats", "scans",
+        ]
+        read_only_fields = ["started_at", "ended_at"]
 
     def get_auto_add_min_confidence(self, _obj):
         return settings.AUTO_ADD_MIN_CONFIDENCE

@@ -676,3 +676,15 @@ button.link {
     overflow-x: auto;
   }
 }
+
+.burst-location {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.burst-location select {
+  padding: 6px 8px;
+}

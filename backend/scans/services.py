@@ -10,7 +10,7 @@ from django.db import transaction
 from django.db.models import Count, F, Max
 
 from cards.models import Card, CardFingerprint
-from collection.models import CollectionEntry
+from collection.models import CollectionEntry, Location
 from vision import fingerprint as fp
 from vision.matcher import FingerprintIndex, MatchResult, identify
 from vision.preprocess import decode_image
@@ -90,8 +90,10 @@ def learn_from_scan(scan, card) -> CardFingerprint:
     return fingerprint
 
 
-def _collection_condition(scan):
-    return scan.session.condition if scan.session_id else CollectionEntry.Condition.NEAR_MINT
+def _collection_location(scan) -> Location:
+    if scan.session_id and scan.session.location_id:
+        return scan.session.location
+    return Location.default()
 
 
 def add_scan_to_collection(scan) -> None:
@@ -101,7 +103,7 @@ def add_scan_to_collection(scan) -> None:
     copies = max(scan.copies, 1)
     with transaction.atomic():
         entry, created = CollectionEntry.objects.select_for_update().get_or_create(
-            card_id=scan.matched_card_id, condition=_collection_condition(scan), defaults={"quantity": copies}
+            card_id=scan.matched_card_id, location=_collection_location(scan), defaults={"quantity": copies}
         )
         if not created:
             CollectionEntry.objects.filter(pk=entry.pk).update(quantity=F("quantity") + copies)

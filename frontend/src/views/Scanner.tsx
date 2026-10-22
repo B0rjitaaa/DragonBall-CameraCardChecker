@@ -63,6 +63,7 @@ function CameraPreview({ imgRef }: { imgRef: RefObject<HTMLImageElement> }) {
 type Source = "device" | "server";
 
 const SOURCE_KEY = "scanner.source";
+const LOCATION_KEY = "scanner.burstLocation";
 
 // Por defecto: la cámara del propio dispositivo en móviles/tabletas (si el
 // navegador la permite) y la webcam del escáner en el ordenador. Se recuerda
@@ -116,6 +117,28 @@ export default function Scanner() {
 
   // Modo ráfaga: sesión activa (o la última, para seguir viendo su resumen).
   const [burstId, setBurstId] = useState<number | null>(null);
+  // Ubicación a la que van las cartas del modo ráfaga (null = "Sin ubicar").
+  const locations = useQuery({ queryKey: ["locations"], queryFn: api.listLocations });
+  const [burstLocation, setBurstLocation] = useState<number | null>(() => {
+    try {
+      return Number(localStorage.getItem(LOCATION_KEY)) || null;
+    } catch {
+      return null;
+    }
+  });
+  const chooseLocation = (id: number | null) => {
+    setBurstLocation(id);
+    try {
+      localStorage.setItem(LOCATION_KEY, id ? String(id) : "");
+    } catch {
+      /* sin persistencia */
+    }
+  };
+  // Si la ubicación guardada ya no existe (se borró), vuelve a "Sin ubicar".
+  const validLocation =
+    burstLocation != null && locations.data?.some((l) => l.id === burstLocation && !l.is_default)
+      ? burstLocation
+      : null;
   const [burstActive, setBurstActive] = useState(false);
   const [detectorState, setDetectorState] = useState<DetectorState>("idle");
   const [sending, setSending] = useState(false);
@@ -233,7 +256,7 @@ export default function Scanner() {
     unlockAudio(); // iOS: el sonido solo se activa tras un toque
     setCaptureError(null);
     try {
-      const session = await api.createSession();
+      const session = await api.createSession(validLocation);
       detector.current = new ChangeDetector(); // el primer fotograma será el fondo vacío
       setBurstId(session.id);
       setBurstActive(true);
@@ -313,7 +336,28 @@ export default function Scanner() {
               ■ Terminar sesión
             </button>
           ) : (
-            <button onClick={() => void startBurst()}>▶ Modo ráfaga</button>
+            <>
+              <button onClick={() => void startBurst()}>▶ Modo ráfaga</button>
+              <label className="burst-location">
+                <span>Guardar en</span>
+                <select
+                  value={validLocation ?? ""}
+                  onChange={(e) => chooseLocation(e.target.value ? Number(e.target.value) : null)}
+                >
+                  {(locations.data ?? [{ id: 0, name: "Sin ubicar", is_default: true }]).map((l) =>
+                    l.is_default ? (
+                      <option key={l.id} value="">
+                        {l.name}
+                      </option>
+                    ) : (
+                      <option key={l.id} value={l.id}>
+                        {l.name}
+                      </option>
+                    ),
+                  )}
+                </select>
+              </label>
+            </>
           )}
           <button className="secondary" onClick={() => void captureManual()} disabled={busy}>
             {burstActive ? "Capturar ahora" : "Capturar e identificar"}

@@ -2,7 +2,7 @@ from django.db import models
 from django.utils import timezone
 
 from cards.models import Card
-from collection.models import CollectionEntry
+from collection.models import CollectionEntry, Location
 
 
 def scan_upload_to(instance, filename):
@@ -16,12 +16,9 @@ class ScanSession(models.Model):
 
     started_at = models.DateTimeField(auto_now_add=True)
     ended_at = models.DateTimeField(null=True, blank=True)
-    # Condición con la que entran las cartas. Elegirla por sesión está en pausa
-    # (tarjeta de Trello): de momento siempre Near Mint.
-    condition = models.CharField(
-        max_length=12,
-        choices=CollectionEntry.Condition.choices,
-        default=CollectionEntry.Condition.NEAR_MINT,
+    # Dónde entran las cartas que se añaden (vacío = "Sin ubicar").
+    location = models.ForeignKey(
+        Location, null=True, blank=True, on_delete=models.SET_NULL, related_name="sessions"
     )
 
     class Meta:

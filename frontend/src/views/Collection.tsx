@@ -35,7 +35,7 @@ export default function Collection() {
             <th />
             <th>Número</th>
             <th>Nombre</th>
-            <th>Condición</th>
+            <th>Ubicación</th>
             <th>Cantidad</th>
           </tr>
         </thead>
@@ -45,7 +45,7 @@ export default function Collection() {
               <td>{entry.card.image_url && <img className="thumb" src={entry.card.image_url} alt="" />}</td>
               <td>{entry.card.card_number}</td>
               <td>{entry.card.name}</td>
-              <td>{entry.condition}</td>
+              <td>{entry.location_name}</td>
               <td className="qty">
                 <button
                   onClick={() => setQuantity.mutate({ id: entry.id, quantity: entry.quantity - 1 })}
