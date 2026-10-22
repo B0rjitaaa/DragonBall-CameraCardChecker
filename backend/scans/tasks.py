@@ -7,7 +7,7 @@ from django.conf import settings
 from django.core.files.base import ContentFile
 from django.utils import timezone
 
-from vision.preprocess import decode_image, encode_jpeg
+from vision.preprocess import crop_region, decode_image, encode_jpeg
 
 from . import camera
 from .models import Scan
@@ -29,6 +29,9 @@ def identify_card(scan_id: int):
                 data = fh.read()
         else:
             data = camera.get_frame()
+            if scan.region:
+                # Solo lo que había dentro del marco guía (modo archivador).
+                data = encode_jpeg(crop_region(decode_image(data), scan.region))
             scan.image.save(f"scan_{scan.pk}.jpg", ContentFile(data), save=False)
 
         result = run_identification(decode_image(data))

@@ -112,6 +112,14 @@ export interface SessionScan {
 
 export type SessionMode = "burst" | "binder";
 
+/** Zona de un fotograma en fracciones 0-1. */
+export interface FrameRegion {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 /** Posición en un archivador: página y casilla (1-9, por filas de 3). */
 export interface BinderSpot {
   page: number;

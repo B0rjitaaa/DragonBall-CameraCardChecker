@@ -69,14 +69,16 @@ export interface Region {
 const GUIDE_MARGIN = 0.08;
 
 /**
- * Zona del vídeo que queda dentro del marco guía (más un margen), teniendo en
- * cuenta que el vídeo se pinta con object-fit: contain (bandas negras).
+ * Zona de la imagen que queda dentro del marco guía (más un margen), en
+ * píxeles de la imagen, teniendo en cuenta que se pinta con object-fit:
+ * contain (bandas negras). Vale para el vídeo del dispositivo y para la
+ * vista previa de la webcam del escáner.
  */
-export function guideRegion(video: HTMLVideoElement, guide: HTMLElement): Region | null {
-  const vw = video.videoWidth;
-  const vh = video.videoHeight;
+export function guideRegion(media: HTMLVideoElement | HTMLImageElement, guide: HTMLElement): Region | null {
+  const vw = media instanceof HTMLVideoElement ? media.videoWidth : media.naturalWidth;
+  const vh = media instanceof HTMLVideoElement ? media.videoHeight : media.naturalHeight;
   if (!vw || !vh) return null;
-  const v = video.getBoundingClientRect();
+  const v = media.getBoundingClientRect();
   const g = guide.getBoundingClientRect();
   const scale = Math.min(v.width / vw, v.height / vh);
   if (!scale) return null;
@@ -90,6 +92,19 @@ export function guideRegion(video: HTMLVideoElement, guide: HTMLElement): Region
   const y1 = Math.min(vh, (g.bottom + my - offY) / scale);
   if (x1 - x0 < 50 || y1 - y0 < 50) return null;
   return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+}
+
+/** La zona del marco en fracciones 0-1 (para que el servidor recorte su propia captura). */
+export function guideFraction(media: HTMLImageElement, guide: HTMLElement): { x: number; y: number; w: number; h: number } | null {
+  const r = guideRegion(media, guide);
+  if (!r) return null;
+  const round = (n: number) => Math.round(n * 10000) / 10000;
+  return {
+    x: round(r.x / media.naturalWidth),
+    y: round(r.y / media.naturalHeight),
+    w: round(r.width / media.naturalWidth),
+    h: round(r.height / media.naturalHeight),
+  };
 }
 
 /** Captura el fotograma actual de un <video> (o solo `region`) como JPEG (lado mayor ≤ MAX_SIDE). */

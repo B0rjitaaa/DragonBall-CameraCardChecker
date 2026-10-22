@@ -7,7 +7,7 @@ import BurstPanel from "../components/BurstPanel";
 import DeviceCamera, { deviceCameraSupported, type Facing } from "../components/DeviceCamera";
 import ScanResult from "../components/ScanResult";
 import { ChangeDetector, type DetectorState } from "../lib/changeDetector";
-import { frameFromVideo, guideRegion, preparePhoto } from "../lib/photo";
+import { frameFromVideo, guideFraction, guideRegion, preparePhoto } from "../lib/photo";
 import { unlockAudio } from "../lib/sounds";
 
 const PREVIEW_INTERVAL_MS = 500;
@@ -317,7 +317,9 @@ export default function Scanner() {
         const region = guideRef.current ? guideRegion(videoRef.current, guideRef.current) : null;
         await api.createScan(await frameFromVideo(videoRef.current, region), burstId, true, spot);
       } else {
-        await api.createScan(undefined, burstId, true, spot);
+        // Webcam del escáner: el servidor captura y recorta esta misma zona.
+        const region = guideRef.current && previewRef.current ? guideFraction(previewRef.current, guideRef.current) : null;
+        await api.createScan(undefined, burstId, true, spot, region);
       }
       setBinderSkipped((s) => {
         const next = new Set(s);

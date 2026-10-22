@@ -32,6 +32,7 @@ class ScanSerializer(serializers.ModelSerializer):
             "repeat_suspect",
             "binder_page",
             "binder_slot",
+            "region",
             "method",
             "candidates",
             "error",
@@ -40,7 +41,9 @@ class ScanSerializer(serializers.ModelSerializer):
             "finished_at",
         ]
         read_only_fields = [
-            f for f in fields if f not in ("image", "session", "after_empty", "binder_page", "binder_slot")
+            f
+            for f in fields
+            if f not in ("image", "session", "after_empty", "binder_page", "binder_slot", "region")
         ]
         extra_kwargs = {
             "image": {"required": False},
@@ -48,7 +51,19 @@ class ScanSerializer(serializers.ModelSerializer):
             "after_empty": {"required": False},
             "binder_page": {"required": False, "min_value": 1, "max_value": 999},
             "binder_slot": {"required": False, "min_value": 1, "max_value": 9},
+            "region": {"required": False},
         }
+
+    def validate_region(self, value):
+        if value is None:
+            return None
+        try:
+            x, y, w, h = (float(value[k]) for k in ("x", "y", "w", "h"))
+        except (KeyError, TypeError, ValueError):
+            raise serializers.ValidationError("Debe ser {x, y, w, h} en fracciones 0-1") from None
+        if not (0 <= x < 1 and 0 <= y < 1 and 0.05 <= w <= 1 and 0.05 <= h <= 1 and x + w <= 1.001 and y + h <= 1.001):
+            raise serializers.ValidationError("Zona fuera de la imagen")
+        return {"x": x, "y": y, "w": w, "h": h}
 
 
 class ConfirmScanSerializer(serializers.Serializer):

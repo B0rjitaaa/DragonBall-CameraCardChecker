@@ -464,6 +464,31 @@ class BinderSessionTests(BurstFixture, TestCase):
         self.assertFalse(self.Entry.objects.filter(card=self.cards[4]).exists())
         self.assertEqual(self.entry(self.cards[6]).notes, "Pág. 3 · fila 2 · col 2")
 
+    def test_webcam_capture_is_cropped_to_the_guide(self):
+        import cv2
+        import numpy as np
+
+        from vision.preprocess import decode_image
+
+        # Fotograma de la webcam: la carta a la derecha y otra carta a la izquierda.
+        frame = np.full((720, 1280, 3), 40, np.uint8)
+        frame[53:667, 760:1200] = cv2.resize(make_card(4), (440, 614))
+        frame[53:667, 60:500] = cv2.resize(make_card(6), (440, 614))
+        region = {"x": 0.57, "y": 0.03, "w": 0.4, "h": 0.94}
+        body = {"session": self.session, "binder_page": 1, "binder_slot": 1, "region": region}
+        with mock.patch("scans.tasks.camera.get_frame", return_value=encode_jpeg(frame)), \
+                self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post("/api/scans/", body, format="json")
+        scan = self.client.get(f"/api/scans/{response.data['id']}/").data
+        self.assertEqual(scan["matched_card"]["id"], self.cards[4].id)
+        from scans.models import Scan
+
+        with Scan.objects.get(pk=scan["id"]).image.open("rb") as fh:
+            height, width = decode_image(fh.read()).shape[:2]
+            self.assertEqual((round(height / 10), width), (68, 512))  # solo el recorte
+        bad = dict(body, region={"x": 0.9, "y": 0, "w": 0.5, "h": 1})
+        self.assertEqual(self.client.post("/api/scans/", bad, format="json").status_code, 400)
+
     def test_slot_validation(self):
         upload = SimpleUploadedFile("frame.jpg", self._card_photo(4), content_type="image/jpeg")
         data = {"image": upload, "session": self.session, "binder_page": 1, "binder_slot": 10}

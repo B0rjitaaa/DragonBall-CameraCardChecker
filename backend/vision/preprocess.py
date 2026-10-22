@@ -38,6 +38,14 @@ def decode_reference(data: bytes) -> np.ndarray:
     return img
 
 
+def crop_region(img: np.ndarray, region: dict) -> np.ndarray:
+    """Recorta {x, y, w, h} (fracciones 0-1) de la imagen."""
+    h, w = img.shape[:2]
+    x0, y0 = int(region["x"] * w), int(region["y"] * h)
+    x1, y1 = min(w, int((region["x"] + region["w"]) * w)), min(h, int((region["y"] + region["h"]) * h))
+    return img[y0:y1, x0:x1]
+
+
 def encode_jpeg(img: np.ndarray, quality: int = 90) -> bytes:
     ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, quality])
     if not ok:

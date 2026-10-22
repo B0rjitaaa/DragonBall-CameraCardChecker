@@ -1,4 +1,4 @@
-import type { BinderSpot, Card, CollectionEntry, Facets, Location, Page, Scan, ScanSession, SessionMode } from "./types";
+import type { BinderSpot, Card, FrameRegion, CollectionEntry, Facets, Location, Page, Scan, ScanSession, SessionMode } from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
@@ -21,8 +21,12 @@ function json(method: string, body: unknown): RequestInit {
 
 export const api = {
   /** `binder`: página y casilla (1-9) en una sesión de archivador. */
-  createScan(image?: File, session?: number, afterEmpty = true, binder?: BinderSpot): Promise<Scan> {
-    const spot = binder ? { binder_page: binder.page, binder_slot: binder.slot } : {};
+  /** `region`: zona del marco (fracciones 0-1) que el servidor recorta de la webcam. */
+  createScan(image?: File, session?: number, afterEmpty = true, binder?: BinderSpot, region?: FrameRegion | null): Promise<Scan> {
+    const spot = {
+      ...(binder ? { binder_page: binder.page, binder_slot: binder.slot } : {}),
+      ...(region && !image ? { region } : {}),
+    };
     if (!image) {
       return request("/api/scans/", json("POST", session ? { session, after_empty: afterEmpty, ...spot } : {}));
     }
@@ -31,7 +35,7 @@ export const api = {
     if (session) {
       form.append("session", String(session));
       form.append("after_empty", afterEmpty ? "true" : "false");
-      for (const [k, v] of Object.entries(spot)) form.append(k, String(v));
+      for (const [k, v] of Object.entries(spot)) form.append(k, String(v)); // region solo va sin imagen
     }
     return request("/api/scans/", { method: "POST", body: form });
   },

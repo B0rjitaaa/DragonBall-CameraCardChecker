@@ -80,6 +80,9 @@ class Scan(models.Model):
     # Sesión de archivador: página y casilla (1-9, por filas de 3) de la carta.
     binder_page = models.PositiveSmallIntegerField(null=True, blank=True)
     binder_slot = models.PositiveSmallIntegerField(null=True, blank=True)
+    # Zona del fotograma a analizar (el marco guía), en fracciones 0-1:
+    # {"x", "y", "w", "h"}. Para capturas de la webcam del escáner.
+    region = models.JSONField(null=True, blank=True)
     method = models.CharField(max_length=8, blank=True)
     candidates = models.JSONField(default=list, blank=True)
     error = models.TextField(blank=True)
