@@ -12,8 +12,17 @@ from .serializers import (
     LocationSerializer,
     MoveSerializer,
     NoteSerializer,
+    ReorderSerializer,
 )
-from .services import AmbiguousLocation, add_copies, card_summary, delete_location, move_copies, remove_copies
+from .services import (
+    AmbiguousLocation,
+    add_copies,
+    card_summary,
+    delete_location,
+    move_copies,
+    remove_copies,
+    reorder_location,
+)
 
 
 class LocationViewSet(viewsets.ModelViewSet):
@@ -79,6 +88,7 @@ class CollectionEntryViewSet(viewsets.ModelViewSet):
                     "location": e.location.name,
                     "location_kind": e.location.kind,
                     "fake": e.fake,
+                    "position": e.position,
                     "notes": e.notes,
                 }
                 for e in rows
@@ -145,3 +155,11 @@ class CollectionEntryViewSet(viewsets.ModelViewSet):
         if not updated:
             return Response({"detail": "No hay copias de esa carta en esa ubicación"}, status=status.HTTP_404_NOT_FOUND)
         return Response(card_summary(card))
+
+    @action(detail=False, methods=["post"])
+    def reorder(self, request):
+        """Orden de las cartas en una ubicación: {location, bandai_ids: [en el orden deseado]}."""
+        body = ReorderSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        reorder_location(body.validated_data["location"], body.validated_data["bandai_ids"])
+        return Response(status=status.HTTP_204_NO_CONTENT)

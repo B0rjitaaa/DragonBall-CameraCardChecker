@@ -50,6 +50,9 @@ class CollectionEntry(models.Model):
     quantity = models.PositiveIntegerField(default=1)
     # Copias falsificadas (p. ej. de AliExpress). Las marca el usuario a mano.
     fake = models.BooleanField(default=False, db_index=True)
+    # Orden de la carta dentro de su ubicación ("Mi orden", arrastrando en Mi colección).
+    # Las filas auténtica y falsa de una carta en una ubicación comparten posición.
+    position = models.PositiveIntegerField(default=0)
     # Detalle dentro de la ubicación (p. ej. "página 12").
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -64,3 +67,12 @@ class CollectionEntry(models.Model):
 
     def __str__(self):
         return f"{self.quantity}x {self.card} ({self.location}{', falsa' if self.fake else ''})"
+
+    def save(self, *args, **kwargs):
+        if self._state.adding and not self.position:
+            # Una carta nueva en la ubicación va al final; si ya estaba (la otra fila,
+            # auténtica o falsa), en su mismo sitio.
+            siblings = CollectionEntry.objects.filter(location_id=self.location_id)
+            same = siblings.filter(card_id=self.card_id).values_list("position", flat=True).first()
+            self.position = same or (siblings.aggregate(m=models.Max("position"))["m"] or 0) + 1
+        super().save(*args, **kwargs)

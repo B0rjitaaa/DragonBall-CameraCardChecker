@@ -512,7 +512,7 @@ class CollectionExportTests(TestCase):
             {
                 "bandai_id": 4, "card_number": "BT1-001", "name": "Champa", "quantity": 2,
                 "location_id": Location.default().id, "location": "Sin ubicar", "location_kind": "other", "fake": False,
-                "notes": "",
+                "position": 1, "notes": "",
             },
         )
         self.assertEqual((data[1]["location"], data[1]["notes"]), ("Mazo rojo", "titular"))
@@ -717,6 +717,40 @@ class FakeCopiesTests(TestCase):
         self.post("move", source=self.deck.id, target=self.deck.id, quantity=1, target_fake=True)
         data = self.post("note", location=self.deck.id, fake=True, notes="AliExpress, junio").data
         self.assertEqual([loc["notes"] for loc in data["locations"]], ["", "AliExpress, junio"])
+
+
+class ReorderTests(TestCase):
+    """«Mi orden»: posición de cada carta dentro de su ubicación."""
+
+    def setUp(self):
+        from collection.models import CollectionEntry, Location
+
+        self.Entry, self.Location = CollectionEntry, Location
+        self.deck = Location.objects.create(name="Mazo", kind="deck")
+        self.cards = [Card.objects.create(bandai_id=i, card_number=f"BT1-00{i}", name=f"C{i}") for i in range(1, 5)]
+        for c in self.cards:
+            CollectionEntry.objects.create(card=c, location=self.deck, quantity=1)
+        self.client = APIClient()
+
+    def order(self):
+        return list(self.Entry.objects.filter(location=self.deck, fake=False).order_by("position").values_list("card__bandai_id", flat=True))
+
+    def test_new_cards_go_last_and_fake_row_shares_position(self):
+        self.assertEqual(self.order(), [1, 2, 3, 4])
+        fake = self.Entry.objects.create(card=self.cards[1], location=self.deck, quantity=1, fake=True)
+        self.assertEqual(fake.position, self.Entry.objects.get(card=self.cards[1], fake=False).position)
+
+    def test_reorder_a_subset_keeps_the_rest_in_place(self):
+        r = self.client.post("/api/collection/reorder/", {"location": self.deck.id, "bandai_ids": [4, 2]}, format="json")
+        self.assertEqual(r.status_code, 204)
+        self.assertEqual(self.order(), [1, 4, 3, 2])  # 4 y 2 intercambian sus huecos; 1 y 3 no se mueven
+        self.client.post("/api/collection/reorder/", {"location": self.deck.id, "bandai_ids": [3, 1, 4, 2]}, format="json")
+        self.assertEqual(self.order(), [3, 1, 4, 2])
+
+    def test_old_data_with_equal_positions_is_numbered_first(self):
+        self.Entry.objects.update(position=0)
+        self.client.post("/api/collection/reorder/", {"location": self.deck.id, "bandai_ids": [2, 1]}, format="json")
+        self.assertEqual(self.order(), [2, 1, 3, 4])
 
 
 class LocationTests(TestCase):

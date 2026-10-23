@@ -143,3 +143,32 @@ def delete_location(location: Location) -> None:
             Scan.objects.filter(collection_entry=entry).update(collection_entry=kept)
             entry.delete()
         location.delete()
+
+
+def reorder_location(location: Location, bandai_ids: list[int]) -> None:
+    """Coloca esas cartas de la ubicación en ese orden.
+
+    Solo se reparten entre ellas las posiciones que ya ocupaban, así que el
+    resto de cartas de la ubicación (otras páginas, filtradas…) no se mueve.
+    """
+    with transaction.atomic():
+        entries = list(
+            CollectionEntry.objects.select_for_update()
+            .filter(location=location)
+            .select_related("card")
+            .order_by("position", "card__card_number", "card_id")
+        )
+        # Posiciones repetidas (datos antiguos): primero se numeran en el orden actual.
+        by_card: dict[int, list[CollectionEntry]] = {}
+        for entry in entries:
+            by_card.setdefault(entry.card.bandai_id, []).append(entry)
+        if len({rows[0].position for rows in by_card.values()}) < len(by_card):
+            for i, rows in enumerate(by_card.values(), start=1):
+                for row in rows:
+                    row.position = i
+        wanted = [b for b in dict.fromkeys(bandai_ids) if b in by_card]
+        slots = sorted(by_card[b][0].position for b in wanted)
+        for bandai_id, slot in zip(wanted, slots):
+            for row in by_card[bandai_id]:
+                row.position = slot
+        CollectionEntry.objects.bulk_update(entries, ["position"])

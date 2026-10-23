@@ -79,3 +79,8 @@ class NoteSerializer(serializers.Serializer):
     location = serializers.PrimaryKeyRelatedField(queryset=Location.objects.all())
     fake = serializers.BooleanField(required=False, default=False)
     notes = serializers.CharField(allow_blank=True, max_length=500)
+
+
+class ReorderSerializer(serializers.Serializer):
+    location = serializers.PrimaryKeyRelatedField(queryset=Location.objects.all())
+    bandai_ids = serializers.ListField(child=serializers.IntegerField(), min_length=1, max_length=500)
