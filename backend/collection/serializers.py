@@ -70,6 +70,8 @@ class MoveSerializer(serializers.Serializer):
     # (misma ubicación y target_fake distinto = marcar como falsas / auténticas).
     source_fake = serializers.BooleanField(required=False, default=False)
     target_fake = serializers.BooleanField(required=False, allow_null=True, default=None)
+    # Línea de la nota (p. ej. la posición en el archivador) que se va con las copias.
+    note_line = serializers.CharField(required=False, allow_blank=True, max_length=200)
 
 
 class NoteSerializer(serializers.Serializer):

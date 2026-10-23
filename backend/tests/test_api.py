@@ -700,6 +700,19 @@ class FakeCopiesTests(TestCase):
             [("Sin ubicar", False, 3), ("Sin ubicar", True, 1)],
         )
 
+    def test_marking_a_specific_binder_copy_as_fake_takes_its_position(self):
+        binder = self.Location.objects.create(name="Archivador", kind="binder")
+        self.Entry.objects.create(
+            card=self.card, location=binder, quantity=2, notes="Pág. 58 · fila 2 · col 2\nPág. 74 · fila 3 · col 3"
+        )
+        data = self.post("move", source=binder.id, target=binder.id, quantity=1, target_fake=True,
+                         note_line="Pág. 74 · fila 3 · col 3").data
+        rows = {(loc["name"], loc["fake"]): (loc["quantity"], loc["notes"]) for loc in data["locations"]}
+        self.assertEqual(rows[("Archivador", False)], (1, "Pág. 58 · fila 2 · col 2"))
+        self.assertEqual(rows[("Archivador", True)], (1, "Pág. 74 · fila 3 · col 3"))
+        bad = self.post("move", source=binder.id, target=binder.id, quantity=1, target_fake=True, note_line="Pág. 1")
+        self.assertEqual(bad.status_code, 400)
+
     def test_note_per_genuine_or_fake_row(self):
         self.post("move", source=self.deck.id, target=self.deck.id, quantity=1, target_fake=True)
         data = self.post("note", location=self.deck.id, fake=True, notes="AliExpress, junio").data

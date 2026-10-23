@@ -120,7 +120,13 @@ class CollectionEntryViewSet(viewsets.ModelViewSet):
         card = get_object_or_404(Card, bandai_id=data["bandai_id"])
         try:
             move_copies(
-                card, data["source"], data["target"], data["quantity"], data["source_fake"], data["target_fake"]
+                card,
+                data["source"],
+                data["target"],
+                data["quantity"],
+                data["source_fake"],
+                data["target_fake"],
+                data.get("note_line") or None,
             )
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)

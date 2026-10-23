@@ -47,7 +47,7 @@ def add_copies(card: Card, location: Location, quantity: int, notes: str = "", f
         )
         if not created:
             CollectionEntry.objects.filter(pk=entry.pk).update(quantity=F("quantity") + quantity)
-            if notes and notes not in entry.notes:
+            if notes and notes not in entry.notes.splitlines():
                 entry.notes = f"{entry.notes}\n{notes}".strip()
                 entry.save(update_fields=["notes"])
             entry.refresh_from_db()
@@ -97,9 +97,14 @@ def move_copies(
     quantity: int,
     source_fake: bool = False,
     target_fake: bool | None = None,
+    note_line: str | None = None,
 ) -> None:
     """Pasa copias de una ubicación a otra, o las marca como falsas / auténticas
-    (misma ubicación, `target_fake` distinto). El total no cambia."""
+    (misma ubicación, `target_fake` distinto). El total no cambia.
+
+    `note_line`: una línea de la nota del origen (p. ej. "Pág. 74 · fila 3 · col 3")
+    que se va con las copias: así se sabe cuál de ellas es la que se mueve.
+    """
     target_fake = source_fake if target_fake is None else target_fake
     if source.pk == target.pk and source_fake == target_fake:
         return
@@ -109,9 +114,20 @@ def move_copies(
             available = entry.quantity if entry else 0
             kind = " falsas" if source_fake else ""
             raise ValueError(f"En «{source.name}» solo hay {available} copias{kind}")
-        notes = entry.notes
+        lines = entry.notes.splitlines()
+        if note_line:
+            if note_line not in lines:
+                raise ValueError(f"«{note_line}» no está en la nota de esas copias")
+            remaining = [line for line in lines if line != note_line]
+            carried = note_line
+        elif quantity == entry.quantity:
+            remaining, carried = [], entry.notes
+        else:
+            remaining, carried = lines, ""
+        if quantity < entry.quantity and remaining != lines:
+            CollectionEntry.objects.filter(pk=entry.pk).update(notes="\n".join(remaining))
         _take(entry, quantity)
-        add_copies(card, target, quantity, notes if quantity == entry.quantity else "", fake=target_fake)
+        add_copies(card, target, quantity, carried, fake=target_fake)
 
 
 def delete_location(location: Location) -> None:
