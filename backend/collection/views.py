@@ -39,7 +39,7 @@ class LocationViewSet(viewsets.ModelViewSet):
 class CollectionEntryViewSet(viewsets.ModelViewSet):
     queryset = CollectionEntry.objects.select_related("card", "location")
     serializer_class = CollectionEntrySerializer
-    filterset_fields = ["location", "card__set_code", "card__color", "card__rarity"]
+    filterset_fields = ["location", "fake", "card__set_code", "card__color", "card__rarity"]
     search_fields = ["card__name", "card__card_number", "notes"]
 
     def create(self, request, *args, **kwargs):
@@ -66,7 +66,7 @@ class CollectionEntryViewSet(viewsets.ModelViewSet):
         catálogo por el id de Bandai (la clave común de los dos proyectos).
         """
         rows = self.get_queryset().order_by(
-            "card__card_number", "-location__is_default", "location__position", "location__name"
+            "card__card_number", "-location__is_default", "location__position", "location__name", "fake"
         )
         return Response(
             [
@@ -78,6 +78,7 @@ class CollectionEntryViewSet(viewsets.ModelViewSet):
                     "location_id": e.location_id,
                     "location": e.location.name,
                     "location_kind": e.location.kind,
+                    "fake": e.fake,
                     "notes": e.notes,
                 }
                 for e in rows
@@ -101,20 +102,26 @@ class CollectionEntryViewSet(viewsets.ModelViewSet):
             add_copies(card, data.get("location") or Location.default(), data["delta"])
         else:
             try:
-                remove_copies(card, -data["delta"], data.get("location"))
+                remove_copies(card, -data["delta"], data.get("location"), data.get("fake"))
             except AmbiguousLocation as exc:
                 return Response({"detail": str(exc), **card_summary(card)}, status=status.HTTP_409_CONFLICT)
         return Response(card_summary(card))
 
     @action(detail=False, methods=["post"])
     def move(self, request):
-        """Mueve copias entre ubicaciones: {bandai_id, source, target, quantity}."""
+        """Mueve copias entre ubicaciones: {bandai_id, source, target, quantity, source_fake?, target_fake?}.
+
+        Con source == target y target_fake distinto de source_fake marca copias
+        como falsas (o como auténticas).
+        """
         body = MoveSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         data = body.validated_data
         card = get_object_or_404(Card, bandai_id=data["bandai_id"])
         try:
-            move_copies(card, data["source"], data["target"], data["quantity"])
+            move_copies(
+                card, data["source"], data["target"], data["quantity"], data["source_fake"], data["target_fake"]
+            )
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(card_summary(card))
@@ -126,7 +133,9 @@ class CollectionEntryViewSet(viewsets.ModelViewSet):
         body.is_valid(raise_exception=True)
         data = body.validated_data
         card = get_object_or_404(Card, bandai_id=data["bandai_id"])
-        updated = CollectionEntry.objects.filter(card=card, location=data["location"]).update(notes=data["notes"])
+        updated = CollectionEntry.objects.filter(card=card, location=data["location"], fake=data["fake"]).update(
+            notes=data["notes"]
+        )
         if not updated:
             return Response({"detail": "No hay copias de esa carta en esa ubicación"}, status=status.HTTP_404_NOT_FOUND)
         return Response(card_summary(card))

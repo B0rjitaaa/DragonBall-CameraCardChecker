@@ -43,22 +43,24 @@ class Location(models.Model):
 
 
 class CollectionEntry(models.Model):
-    """Copias de una carta en una ubicación."""
+    """Copias de una carta en una ubicación (las falsas, en su propia fila)."""
 
     card = models.ForeignKey(Card, on_delete=models.CASCADE, related_name="collection_entries")
     location = models.ForeignKey(Location, on_delete=models.PROTECT, related_name="entries")
     quantity = models.PositiveIntegerField(default=1)
+    # Copias falsificadas (p. ej. de AliExpress). Las marca el usuario a mano.
+    fake = models.BooleanField(default=False, db_index=True)
     # Detalle dentro de la ubicación (p. ej. "página 12").
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["card__card_number", "location"]
+        ordering = ["card__card_number", "location", "fake"]
         verbose_name_plural = "collection entries"
         constraints = [
-            models.UniqueConstraint(fields=["card", "location"], name="unique_card_location"),
+            models.UniqueConstraint(fields=["card", "location", "fake"], name="unique_card_location_fake"),
         ]
 
     def __str__(self):
-        return f"{self.quantity}x {self.card} ({self.location})"
+        return f"{self.quantity}x {self.card} ({self.location}{', falsa' if self.fake else ''})"

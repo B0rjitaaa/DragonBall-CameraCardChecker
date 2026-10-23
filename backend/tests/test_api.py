@@ -511,7 +511,8 @@ class CollectionExportTests(TestCase):
             data[0],
             {
                 "bandai_id": 4, "card_number": "BT1-001", "name": "Champa", "quantity": 2,
-                "location_id": Location.default().id, "location": "Sin ubicar", "location_kind": "other", "notes": "",
+                "location_id": Location.default().id, "location": "Sin ubicar", "location_kind": "other", "fake": False,
+                "notes": "",
             },
         )
         self.assertEqual((data[1]["location"], data[1]["notes"]), ("Mazo rojo", "titular"))
@@ -640,6 +641,69 @@ class CollectionAdjustTests(TestCase):
             "/api/collection/note/", {"bandai_id": 4, "location": self.binder.id, "notes": "página 12"}, format="json"
         ).data
         self.assertEqual(data["locations"][0]["notes"], "página 12")
+
+
+class FakeCopiesTests(TestCase):
+    """Copias falsas: se marcan moviéndolas a la misma ubicación con fake=True."""
+
+    def setUp(self):
+        from collection.models import CollectionEntry, Location
+
+        self.Entry, self.Location = CollectionEntry, Location
+        self.card = Card.objects.create(bandai_id=4, card_number="BT1-001", name="Champa")
+        self.deck = Location.objects.create(name="Mazo rojo", kind="deck")
+        self.client = APIClient()
+        self.Entry.objects.create(card=self.card, location=self.deck, quantity=4)
+
+    def post(self, path, **body):
+        return self.client.post(f"/api/collection/{path}/", {"bandai_id": 4, **body}, format="json")
+
+    def rows(self, data):
+        return [(loc["name"], loc["fake"], loc["quantity"]) for loc in data["locations"]]
+
+    def test_existing_copies_are_genuine_by_default(self):
+        self.assertFalse(self.Entry.objects.get().fake)
+        export = self.client.get("/api/collection/export/").data
+        self.assertFalse(export[0]["fake"])
+
+    def test_mark_and_unmark_fake_in_the_same_location(self):
+        data = self.post("move", source=self.deck.id, target=self.deck.id, quantity=1, target_fake=True).data
+        self.assertEqual(self.rows(data), [("Mazo rojo", False, 3), ("Mazo rojo", True, 1)])
+        self.assertEqual((data["quantity"], data["fakes"]), (4, 1))
+        data = self.post("move", source=self.deck.id, target=self.deck.id, quantity=1, source_fake=True, target_fake=False).data
+        self.assertEqual(self.rows(data), [("Mazo rojo", False, 4)])
+
+    def test_fakes_keep_being_fake_when_moved_and_removed_last(self):
+        binder = self.Location.objects.create(name="Archivador", kind="binder")
+        self.post("move", source=self.deck.id, target=self.deck.id, quantity=2, target_fake=True)
+        data = self.post("move", source=self.deck.id, target=binder.id, quantity=1, source_fake=True).data
+        self.assertIn(("Archivador", True, 1), self.rows(data))
+        # Restar sin decir cuál quita primero las auténticas…
+        data = self.post("adjust", delta=-1, location=self.deck.id).data
+        self.assertEqual(self.rows(data), [("Archivador", True, 1), ("Mazo rojo", False, 1), ("Mazo rojo", True, 1)])
+        # …y con fake=True, las falsas.
+        data = self.post("adjust", delta=-1, location=self.deck.id, fake=True).data
+        self.assertEqual(self.rows(data), [("Archivador", True, 1), ("Mazo rojo", False, 1)])
+
+    def test_location_totals_and_filter(self):
+        self.post("move", source=self.deck.id, target=self.deck.id, quantity=1, target_fake=True)
+        deck = next(loc for loc in self.client.get("/api/locations/").data if loc["name"] == "Mazo rojo")
+        self.assertEqual((deck["cards"], deck["copies"], deck["fakes"]), (1, 4, 1))
+        fakes = self.client.get("/api/collection/", {"fake": "true"}).data["results"]
+        self.assertEqual([(e["location_name"], e["quantity"]) for e in fakes], [("Mazo rojo", 1)])
+
+    def test_deleting_a_location_keeps_fakes_apart(self):
+        self.post("move", source=self.deck.id, target=self.deck.id, quantity=1, target_fake=True)
+        self.client.delete(f"/api/locations/{self.deck.id}/")
+        self.assertEqual(
+            sorted(self.Entry.objects.values_list("location__name", "fake", "quantity")),
+            [("Sin ubicar", False, 3), ("Sin ubicar", True, 1)],
+        )
+
+    def test_note_per_genuine_or_fake_row(self):
+        self.post("move", source=self.deck.id, target=self.deck.id, quantity=1, target_fake=True)
+        data = self.post("note", location=self.deck.id, fake=True, notes="AliExpress, junio").data
+        self.assertEqual([loc["notes"] for loc in data["locations"]], ["", "AliExpress, junio"])
 
 
 class LocationTests(TestCase):

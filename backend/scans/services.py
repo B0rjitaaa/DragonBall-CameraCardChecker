@@ -106,6 +106,7 @@ def add_scan_to_collection(scan) -> None:
         entry, created = CollectionEntry.objects.select_for_update().get_or_create(
             card_id=scan.matched_card_id,
             location=_collection_location(scan),
+            fake=False,
             defaults={"quantity": copies, "notes": position},
         )
         if not created:
