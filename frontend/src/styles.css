@@ -388,7 +388,7 @@ button.stop {
   border-radius: 6px 0 0 6px;
 }
 
-.copies-input button:last-child {
+.copies-input button[aria-label="Una copia más"] {
   border-radius: 0 6px 6px 0;
 }
 
@@ -772,4 +772,18 @@ button.link {
 .binder-hint {
   margin: 0;
   font-size: 0.9rem;
+}
+
+/* Botón PS (playset = 4 copias), separado del − [n] + */
+.burst-actions .copies-input button.playset {
+  margin-left: 6px;
+  border-radius: 6px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.burst-actions .copies-input button.playset.on {
+  color: var(--accent);
+  border-color: var(--accent);
+  opacity: 1;
 }

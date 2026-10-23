@@ -18,6 +18,8 @@ function rowState(s: SessionScan): { label: string; tone: "ok" | "warn" | "muted
 }
 
 const MAX_COPIES = 99;
+// Playset: el máximo de copias de una carta en un mazo.
+const PLAYSET = 4;
 const clampCopies = (n: number) => Math.min(MAX_COPIES, Math.max(1, Math.round(n) || 1));
 
 /** − [n] +: se puede escribir el número o usar los botones. */
@@ -82,6 +84,16 @@ function CopiesInput({
         onClick={() => commit(value + 1)}
       >
         +
+      </button>
+      <button
+        type="button"
+        className={`secondary playset ${value === PLAYSET ? "on" : ""}`}
+        title="Playset: 4 copias"
+        aria-label="Playset (4 copias)"
+        disabled={disabled || value === PLAYSET}
+        onClick={() => commit(PLAYSET)}
+      >
+        PS
       </button>
     </span>
   );
