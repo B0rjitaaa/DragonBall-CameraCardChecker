@@ -4,6 +4,7 @@ import Catalog from "./views/Catalog";
 import Collection from "./views/Collection";
 import History from "./views/History";
 import Scanner from "./views/Scanner";
+import { useNewVersion } from "./lib/updates";
 
 const TABS = {
   scanner: { label: "Escáner", view: Scanner },
@@ -26,6 +27,7 @@ function currentTab(): TabKey {
 }
 
 export default function App() {
+  const newVersion = useNewVersion();
   const [tab, setTab] = useState<TabKey>(currentTab);
 
   useEffect(() => {
@@ -37,6 +39,12 @@ export default function App() {
   const View = TABS[tab].view;
   return (
     <div className="app">
+      {newVersion && (
+        <div className="update-banner" role="status">
+          Hay una versión nueva del escáner.
+          <button onClick={() => window.location.reload()}>Recargar</button>
+        </div>
+      )}
       <header className="topbar">
         <h1>DBS Card Identifier</h1>
         <nav>

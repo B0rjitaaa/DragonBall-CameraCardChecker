@@ -795,3 +795,21 @@ button.link {
 .scan-time.slow {
   color: var(--warn);
 }
+
+.update-banner {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.update-banner button {
+  padding: 4px 12px;
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border);
+}
