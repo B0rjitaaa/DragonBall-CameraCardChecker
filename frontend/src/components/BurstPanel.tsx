@@ -8,6 +8,29 @@ import ScanResult from "./ScanResult";
 
 const percent = (v: number | null) => (v == null ? "—" : `${Math.round(v * 100)}%`);
 
+/** "145 ms" o "1,2 s". */
+const fmtMs = (ms: number) => (ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toLocaleString("es-ES", { maximumFractionDigits: 1 })} s`);
+
+/**
+ * Tiempo de reconocimiento: lo que tardó el servidor en identificarla y, si
+ * hubo que esperar (cola, otra carta antes), el total desde que llegó la foto.
+ */
+function Timing({ s }: { s: SessionScan }) {
+  if (s.duration_ms == null) return null;
+  const total = s.finished_at ? new Date(s.finished_at).getTime() - new Date(s.created_at).getTime() : null;
+  const slow = (total ?? s.duration_ms) >= 1000;
+  return (
+    <span
+      className={`scan-time ${slow ? "slow" : ""}`}
+      title={total != null ? `Identificación: ${fmtMs(s.duration_ms)} · desde que llegó la foto: ${fmtMs(total)}` : undefined}
+    >
+      {" · "}
+      {fmtMs(s.duration_ms)}
+      {total != null && total - s.duration_ms >= 100 && ` (${fmtMs(total)} en total)`}
+    </span>
+  );
+}
+
 function rowState(s: SessionScan): { label: string; tone: "ok" | "warn" | "muted" | "error" } {
   if (s.status === "pending" || s.status === "processing") return { label: "Identificando…", tone: "muted" };
   if (s.status === "failed") return { label: "Error", tone: "error" };
@@ -211,6 +234,7 @@ export default function BurstPanel({ sessionId, active }: { sessionId: number; a
                   <span>{s.card_number ? `${s.card_number} · ${s.card_name}` : s.error || "—"}</span>
                   <span className="muted small">
                     {percent(s.confidence)}
+                    <Timing s={s} />
                     {s.confirmed && " · confirmada"}
                     {s.binder_page != null && s.binder_slot != null && ` · pág. ${s.binder_page}, casilla ${s.binder_slot}`}
                   </span>

@@ -108,6 +108,7 @@ export interface SessionScan {
   error: string;
   duration_ms: number | null;
   created_at: string;
+  finished_at: string | null;
 }
 
 export type SessionMode = "burst" | "binder";

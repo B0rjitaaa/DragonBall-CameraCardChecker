@@ -787,3 +787,11 @@ button.link {
   border-color: var(--accent);
   opacity: 1;
 }
+
+.scan-time {
+  font-variant-numeric: tabular-nums;
+}
+
+.scan-time.slow {
+  color: var(--warn);
+}

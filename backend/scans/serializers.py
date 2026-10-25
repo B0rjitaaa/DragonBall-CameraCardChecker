@@ -105,6 +105,7 @@ class SessionScanSerializer(serializers.ModelSerializer):
             "error",
             "duration_ms",
             "created_at",
+            "finished_at",
         ]
 
 
