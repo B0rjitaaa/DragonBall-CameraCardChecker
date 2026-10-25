@@ -211,9 +211,12 @@ export default function Scanner() {
       let created;
       if (source === "device") {
         if (!videoRef.current) throw new Error("La cámara no está activa");
-        created = await api.createScan(await frameFromVideo(videoRef.current), session, afterEmpty);
+        // Solo lo que está dentro del marco: lo de alrededor (alfombrilla, otras cartas) no cuenta.
+        const region = guideRef.current ? guideRegion(videoRef.current, guideRef.current) : null;
+        created = await api.createScan(await frameFromVideo(videoRef.current, region), session, afterEmpty);
       } else {
-        created = await api.createScan(undefined, session, afterEmpty);
+        const region = guideRef.current && previewRef.current ? guideFraction(previewRef.current, guideRef.current) : null;
+        created = await api.createScan(undefined, session, afterEmpty, undefined, region);
       }
       setCaptureError(null);
       void queryClient.invalidateQueries({ queryKey: ["session", session] });
