@@ -194,7 +194,7 @@ export default function Scanner() {
     enabled: scanId != null,
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      return status === "done" || status === "failed" ? false : 500;
+      return status === "done" || status === "failed" ? false : 250;
     },
   });
 

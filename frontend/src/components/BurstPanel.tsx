@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
-import { api } from "../api";
+import { api, sessionPollInterval } from "../api";
 import { sounds } from "../lib/sounds";
 import type { SessionScan } from "../types";
 import ScanResult from "./ScanResult";
@@ -124,7 +124,7 @@ export default function BurstPanel({ sessionId, active }: { sessionId: number; a
   const session = useQuery({
     queryKey: ["session", sessionId],
     queryFn: () => api.getSession(sessionId),
-    refetchInterval: active ? 1000 : false,
+    refetchInterval: (query) => (active ? sessionPollInterval(query.state.data) : false),
   });
 
   const addCopy = useMutation({

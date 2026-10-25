@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { api } from "../api";
+import { api, sessionPollInterval } from "../api";
 import type { SessionScan } from "../types";
 
 const SLOTS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
@@ -32,7 +32,11 @@ interface Props {
 
 /** Sesión de archivador: la página en 3×3, la casilla actual y los controles. */
 export default function BinderBar({ sessionId, page, slot, skipped, sending, onSelect, onCapture, onSkip, onPage, onStop }: Props) {
-  const session = useQuery({ queryKey: ["session", sessionId], queryFn: () => api.getSession(sessionId), refetchInterval: 1000 });
+  const session = useQuery({
+    queryKey: ["session", sessionId],
+    queryFn: () => api.getSession(sessionId),
+    refetchInterval: (query) => sessionPollInterval(query.state.data),
+  });
   // Última captura de cada casilla de esta página (las repetidas quedan descartadas).
   const bySlot = new Map<number, SessionScan>();
   for (const s of [...(session.data?.scans ?? [])].reverse()) {

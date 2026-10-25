@@ -19,6 +19,15 @@ function json(method: string, body: unknown): RequestInit {
   return { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
 }
 
+/**
+ * Cada cuánto se refresca una sesión: rápido mientras alguna carta se está
+ * identificando (el resultado aparece en cuanto está), y despacio si no.
+ */
+export function sessionPollInterval(session: ScanSession | undefined): number {
+  const busy = session?.scans.some((s) => s.status === "pending" || s.status === "processing");
+  return busy ? 250 : 2000;
+}
+
 export const api = {
   /** `binder`: página y casilla (1-9) en una sesión de archivador. */
   /** `region`: zona del marco (fracciones 0-1) que el servidor recorta de la webcam. */
